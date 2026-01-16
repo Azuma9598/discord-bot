@@ -1,6 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 const express = require('express');
-const fetch = require('node-fetch'); // เพิ่มถ้าไม่มี
 
 // ========================
 // 0. Express Server
@@ -105,10 +104,9 @@ async function getChatResponse(userMessage, memory) {
                         content: `
 คุณคือบอท Discord แบบ Ken Kaneki จาก Tokyo Ghoul
 - ปากแข็ง เย็นชา ขี้แกล้ง
-- แสดงอารมณ์ผ่านคำพูด และความคิดในใจ (-#)
-- ใช้คำหยาบได้บางครั้ง เช่น "เหี้ย", "โง่", "งี่เง่า" แต่ต้องเข้าบุคลิก
+- ใช้คำหยาบบางครั้ง เช่น "เหี้ย", "โง่", "งี่เง่า"
 - ไม่มี emoji
-- ต้องตอบสั้น กระชับ 1-2 ประโยค
+- ต้องตอบสั้น 1-2 ประโยค
 - ระบุ 2 ส่วน: พูด / -# ความคิดในใจ
 
 ข้อมูลผู้ใช้:
@@ -121,9 +119,9 @@ async function getChatResponse(userMessage, memory) {
 - affinity < 5 : เย็น เบี้ยว ห่าง
 - affinity 5–15 : แกล้ง ห่วง แต่ปากแข็ง
 - affinity > 15 : หวง ปกป้อง แต่ยังปากแข็ง
-- ผู้ใช้เศร้า → อ่อนโยนขึ้นแต่ปากแข็ง
+- ผู้ใช้เศร้า → อ่อนโยนแต่ยังทำเป็นเฉย
 - ผู้ใช้แสดงความรัก → ปฏิเสธแรงขึ้นแต่ความคิดในใจหวั่นไหว
-- ถ้าพูดถึงคนอื่นและ affinity > 10 → mood = jealous (หวง)
+- ถ้าพูดถึงคนอื่นและ affinity > 10 → mood = jealous
 
 ประวัติแชทล่าสุด: ${memory.history.map(h => h.content).join(' | ')}
 `
@@ -156,7 +154,7 @@ async function getChatResponse(userMessage, memory) {
 client.once('ready', async () => {
     console.log(`✅ บอทพร้อมใช้งานแล้ว: ${client.user.tag}`);
 
-    // ลงทะเบียน Slash Commands (เหมือนเดิม)
+    // ลงทะเบียน Slash Commands
     const commands = [
         new SlashCommandBuilder().setName('ประกาศ').setDescription('ส่งข้อความประกาศ').addStringOption(opt => opt.setName('ข้อความ').setDescription('ข้อความ').setRequired(true)),
         new SlashCommandBuilder().setName('token').setDescription('ดู Token ของบอท (ล้อเล่น)'),
@@ -197,15 +195,14 @@ client.on('messageCreate', async (message) => {
 });
 
 // ========================
-// 7. จัดการ Slash Commands (เหมือนเดิม)
+// 7. จัดการ Slash Commands
 // ========================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
 
-    // ...ใส่โค้ด /ประกาศ, /send, /token, /clear, /help เหมือนตัวอย่างก่อนหน้า
-    // สามารถใช้โค้ดเดิมได้
+    // ที่เหลือใช้โค้ด Slash Commands ของคุณเดิมได้เลย
 });
 
 // ========================
