@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
 // ========================
@@ -29,13 +29,10 @@ const client = new Client({
 // ========================
 // 2. ตั้งค่า
 // ========================
-const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
-const REQUIRED_ROLE_IDS = ['1432772884371079208', '1459925314456260719'];
-const MENTION_ROLE_ID = '1432795396861595840';
-const CHAT_CHANNEL_ID = '1460867977305002125';
+const CHAT_CHANNEL_ID = '1460867977305002125'; // ช่อง AI Chat
 
 // ========================
-// 3. ระบบความจำคน (Affinity + Mood + Context)
+// 3. ระบบความจำคน
 // ========================
 const userMemory = new Map();
 
@@ -53,7 +50,6 @@ function updateUserMemory(message) {
     }
 
     const mem = userMemory.get(id);
-
     mem.affinity += 1;
     mem.lastTalk = Date.now();
 
@@ -81,7 +77,7 @@ function getTimeMood() {
 }
 
 // ========================
-// 4. Claude AI Chat (debug-friendly)
+// 4. Claude AI Chat (แก้แล้ว)
 // ========================
 async function getChatResponse(userMessage, memory) {
     try {
@@ -91,16 +87,13 @@ async function getChatResponse(userMessage, memory) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 500,
-                messages: [
-                    {
-                        role: 'system',
-                        content: `
+                system: `
 คุณคือบอท Discord แบบ Ken Kaneki
 - ปากแข็ง เย็นชา ขี้แกล้ง
 - ใช้คำหยาบบางครั้ง เช่น "เหี้ย", "โง่", "งี่เง่า"
@@ -123,11 +116,8 @@ async function getChatResponse(userMessage, memory) {
 - ถ้าพูดถึงคนอื่นและ affinity > 10 → mood = jealous
 
 ประวัติแชทล่าสุด: ${memory.history.map(h => h.content).join(' | ')}
-`
-                    },
-                    ...memory.history,
-                    { role: 'user', content: userMessage }
-                ]
+`,
+                messages: [...memory.history, { role: 'user', content: userMessage }]
             })
         });
 
@@ -155,9 +145,9 @@ async function getChatResponse(userMessage, memory) {
 }
 
 // ========================
-// 5. Ready
+// 5. พร้อมใช้งาน
 // ========================
-client.once('ready', async () => {
+client.once('ready', () => {
     console.log(`✅ บอทพร้อมใช้งานแล้ว: ${client.user.tag}`);
 });
 
