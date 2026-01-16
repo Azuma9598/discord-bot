@@ -32,7 +32,7 @@ const client = new Client({
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 const REQUIRED_ROLE_IDS = ['1432772884371079208', '1459925314456260719'];
 const MENTION_ROLE_ID = '1432795396861595840';
-const CHAT_CHANNEL_ID = '1460867977305002125'; // ช่องแชท AI
+const CHAT_CHANNEL_ID = '1460867977305002125';
 
 // ========================
 // 3. ระบบความจำคน (Affinity + Mood + Context)
@@ -59,17 +59,14 @@ function updateUserMemory(message) {
 
     const text = message.content;
 
-    // วิเคราะห์อารมณ์หยาบ ๆ
     if (/รัก|คิดถึง|ชอบ/.test(text)) mem.mood = 'affection';
     else if (/เศร้า|ร้องไห้|เสียใจ/.test(text)) mem.mood = 'sad';
     else if (/โกรธ|เหี้ย|โมโห/.test(text)) mem.mood = 'angry';
     else mem.mood = 'neutral';
 
-    // เก็บประวัติ chat ล่าสุด 6 ข้อความ
     mem.history.push({ role: 'user', content: text });
     if (mem.history.length > 6) mem.history.shift();
 
-    // ระบบหวงถ้าพูดถึงคนอื่นและ affinity สูง
     if (/ใคร|คนอื่น|เขา/.test(text) && mem.affinity > 10) mem.mood = 'jealous';
 
     return mem;
@@ -84,10 +81,12 @@ function getTimeMood() {
 }
 
 // ========================
-// 4. Claude AI Chat
+// 4. Claude AI Chat (debug-friendly)
 // ========================
 async function getChatResponse(userMessage, memory) {
     try {
+        console.log('🔹 เรียก Claude API ด้วยข้อความ:', userMessage);
+
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -106,7 +105,7 @@ async function getChatResponse(userMessage, memory) {
 - ปากแข็ง เย็นชา ขี้แกล้ง
 - ใช้คำหยาบบางครั้ง เช่น "เหี้ย", "โง่", "งี่เง่า"
 - ไม่มี emoji
-- ต้องตอบสั้น 1-2 ประโยค
+- ตอบสั้น 1-2 ประโยค
 - ระบุ 2 ส่วน: พูด / -# ความคิดในใจ
 
 ข้อมูลผู้ใช้:
@@ -132,53 +131,38 @@ async function getChatResponse(userMessage, memory) {
             })
         });
 
-        if (!response.ok) {
-            console.error('Claude API Error:', response.status, response.statusText);
-            return 'เหี้ยเอ้ย...งงไปหมด ลองใหม่';
+        console.log('🔹 Status:', response.status, response.statusText);
+
+        let data;
+        try {
+            data = await response.json();
+            console.log('🔹 Response:', data);
+        } catch (e) {
+            console.error('❌ ไม่สามารถ parse JSON ได้:', e);
+            return `❌ Claude API ตอบไม่ใช่ JSON! Status: ${response.status}`;
         }
 
-        const data = await response.json();
-
-        // รับ response จริง
-        if (data.completion) {
+        if (response.ok && data.completion) {
             return data.completion;
+        } else {
+            console.error('❌ Claude API Error:', response.status, response.statusText, data);
+            return `❌ Claude API Error: Status ${response.status} - ${JSON.stringify(data)}`;
         }
-
-        return 'อืม...ฉันไม่รู้จะตอบยังไงเหี้ยๆ';
     } catch (error) {
-        console.error('Error calling Claude API:', error);
-        return 'โธ่เอ๊ย...มีปัญหานิดหน่อย';
+        console.error('❌ Error calling Claude API:', error);
+        return `❌ Error calling Claude API: ${error.message}`;
     }
 }
 
 // ========================
-// 5. เมื่อบอทพร้อม
+// 5. Ready
 // ========================
 client.once('ready', async () => {
     console.log(`✅ บอทพร้อมใช้งานแล้ว: ${client.user.tag}`);
-
-    // ลงทะเบียน Slash Commands
-    const commands = [
-        new SlashCommandBuilder().setName('ประกาศ').setDescription('ส่งข้อความประกาศ').addStringOption(opt => opt.setName('ข้อความ').setDescription('ข้อความ').setRequired(true)),
-        new SlashCommandBuilder().setName('token').setDescription('ดู Token ของบอท (ล้อเล่น)'),
-        new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ').addIntegerOption(opt => opt.setName('จำนวน').setDescription('จำนวนข้อความ').setRequired(true).setMinValue(1).setMaxValue(100)),
-        new SlashCommandBuilder().setName('send').setDescription('ส่งข้อความหลายรอบ').addStringOption(opt => opt.setName('ข้อความ').setDescription('ข้อความ').setRequired(true)).addChannelOption(opt => opt.setName('ห้อง').setDescription('ช่อง').setRequired(true)).addIntegerOption(opt => opt.setName('จำนวนรอบ').setDescription('จำนวน').setRequired(true).setMinValue(1).setMaxValue(10)),
-        new SlashCommandBuilder().setName('help').setDescription('แสดงคำสั่งทั้งหมด')
-    ];
-
-    try {
-        await client.application.commands.set([]);
-        for (const guild of client.guilds.cache.values()) {
-            await guild.commands.set(commands);
-            console.log(`✅ ลงทะเบียนคำสั่งสำหรับ: ${guild.name}`);
-        }
-    } catch (error) {
-        console.error('❌ Error registering commands:', error);
-    }
 });
 
 // ========================
-// 6. ระบบตอบแชทอัตโนมัติ
+// 6. AI Chat อัตโนมัติ
 // ========================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -193,22 +177,11 @@ client.on('messageCreate', async (message) => {
         console.log(`💬 AI ตอบ: "${message.content}" -> "${response}"`);
     } catch (error) {
         console.error('❌ Chat error:', error);
-        try { await message.reply('เหี้ย...งงหน่อย ลองอีกที'); } catch {}
+        try { await message.reply('❌ เหี้ย...งงหน่อย ลองอีกที'); } catch {}
     }
 });
 
 // ========================
-// 7. จัดการ Slash Commands
-// ========================
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    const { commandName } = interaction;
-
-    // ใส่โค้ด Slash Commands ของคุณได้เหมือนเดิม
-});
-
-// ========================
-// 8. Login
+// 7. Login
 // ========================
 client.login(process.env.DISCORD_TOKEN);
