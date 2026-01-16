@@ -59,7 +59,7 @@ function updateUserMemory(message) {
 
     const text = message.content;
 
-    // วิเคราะห์อารมณ์หยาบๆ
+    // วิเคราะห์อารมณ์หยาบ ๆ
     if (/รัก|คิดถึง|ชอบ/.test(text)) mem.mood = 'affection';
     else if (/เศร้า|ร้องไห้|เสียใจ/.test(text)) mem.mood = 'sad';
     else if (/โกรธ|เหี้ย|โมโห/.test(text)) mem.mood = 'angry';
@@ -102,7 +102,7 @@ async function getChatResponse(userMessage, memory) {
                     {
                         role: 'system',
                         content: `
-คุณคือบอท Discord แบบ Ken Kaneki จาก Tokyo Ghoul
+คุณคือบอท Discord แบบ Ken Kaneki
 - ปากแข็ง เย็นชา ขี้แกล้ง
 - ใช้คำหยาบบางครั้ง เช่น "เหี้ย", "โง่", "งี่เง่า"
 - ไม่มี emoji
@@ -138,9 +138,12 @@ async function getChatResponse(userMessage, memory) {
         }
 
         const data = await response.json();
-        if (data.content && data.content[0] && data.content[0].text) {
-            return data.content[0].text;
+
+        // รับ response จริง
+        if (data.completion) {
+            return data.completion;
         }
+
         return 'อืม...ฉันไม่รู้จะตอบยังไงเหี้ยๆ';
     } catch (error) {
         console.error('Error calling Claude API:', error);
@@ -202,7 +205,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const { commandName } = interaction;
 
-    // ที่เหลือใช้โค้ด Slash Commands ของคุณเดิมได้เลย
+    // ใส่โค้ด Slash Commands ของคุณได้เหมือนเดิม
 });
 
 // ========================
