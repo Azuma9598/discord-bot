@@ -1,16 +1,12 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
-/* =========================
-   0. Express (กัน Render หลับ)
-========================= */
+/* ================= Express ================= */
 const app = express();
 app.get('/', (_, res) => res.send('Bot running'));
 app.listen(process.env.PORT || 3000);
 
-/* =========================
-   1. Discord Client
-========================= */
+/* ================= Discord ================= */
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -19,14 +15,9 @@ const client = new Client({
     ]
 });
 
-/* =========================
-   2. Config
-========================= */
 const CHAT_CHANNEL_ID = '1460867977305002125';
 
-/* =========================
-   3. Memory System
-========================= */
+/* ================= Memory ================= */
 const memoryMap = new Map();
 
 function getTimeMood() {
@@ -37,41 +28,22 @@ function getTimeMood() {
     return 'dark';
 }
 
-function updateMemory(message) {
-    const id = message.author.id;
-
-    if (!memoryMap.has(id)) {
-        memoryMap.set(id, {
-            name: message.author.username,
+function getMemory(user) {
+    if (!memoryMap.has(user.id)) {
+        memoryMap.set(user.id, {
+            name: user.username,
             affinity: 0,
             mood: 'neutral',
             history: []
         });
     }
-
-    const mem = memoryMap.get(id);
-    mem.affinity++;
-
-    const text = message.content;
-
-    if (/รัก|คิดถึง|ชอบ/.test(text)) mem.mood = 'affection';
-    else if (/เศร้า|เสียใจ|ร้องไห้/.test(text)) mem.mood = 'sad';
-    else if (/เหี้ย|โกรธ|โมโห/.test(text)) mem.mood = 'angry';
-    else mem.mood = 'neutral';
-
-    // ❌ ห้ามมี system
-    mem.history.push({ role: 'user', content: text });
-    if (mem.history.length > 6) mem.history.shift();
-
-    return mem;
+    return memoryMap.get(user.id);
 }
 
-/* =========================
-   4. Claude AI (แก้สมบูรณ์)
-========================= */
-async function getChatResponse(userMessage, memory) {
+/* ================= Claude ================= */
+async function getChatResponse(text, mem) {
     try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -82,68 +54,82 @@ async function getChatResponse(userMessage, memory) {
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 500,
 
-                // ✅ system ต้องอยู่นอก messages
                 system: `
-คุณคือบอท Discord บุคลิก Ken Kaneki
-- ปากแข็ง เบี้ยว เย็นชา
-- ใช้คำหยาบได้ เช่น เหี้ย โง่ งี่เง่า
+คุณคือบอท Discord บุคลิกเย็นชา ปากแข็ง
+- ใช้คำพูดแรงได้บ้าง
 - ไม่มี emoji
-- ทุกคำตอบต้องมี 2 ส่วน:
+- ทุกคำตอบต้องมี:
 1) คำพูด
 2) -# ความคิดในใจ (ตรงข้าม)
 
-ข้อมูลผู้ใช้:
-ชื่อ: ${memory.name}
-ความสนิท: ${memory.affinity}
-อารมณ์: ${memory.mood}
+ชื่อผู้ใช้: ${mem.name}
+ความสนิท: ${mem.affinity}
+อารมณ์: ${mem.mood}
 เวลา: ${getTimeMood()}
 `,
 
-                // ✅ messages = user / assistant เท่านั้น
                 messages: [
-                    ...memory.history,
-                    { role: 'user', content: userMessage }
+                    ...mem.history,
+                    { role: 'user', content: text }
                 ]
             })
         });
 
-        const data = await response.json();
+        const data = await res.json();
 
-        // ✅ วิธีอ่านคำตอบที่ถูกต้อง
-        if (response.ok && data.content?.[0]?.text) {
+        // ✅ ถ้ามี text ถือว่าสำเร็จทันที
+        if (data?.content?.[0]?.text) {
             return data.content[0].text;
         }
 
-        console.error('Claude API Error:', data);
-        return 'เหี้ย…ระบบแม่งรวน ลองใหม่';
+        console.error('Claude bad response:', data);
+        return 'ตอบไม่ได้ ลองใหม่อีกที';
 
     } catch (err) {
-        console.error('Claude Fetch Error:', err);
-        return 'เหี้ยเอ้ย เซิร์ฟเวอร์ล้ม';
+        console.error('Claude fetch error:', err);
+        return 'ระบบขัดข้อง';
     }
 }
 
-/* =========================
-   5. Message Handler
-========================= */
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    if (message.channel.id !== CHAT_CHANNEL_ID) return;
+/* ================= Message Handler ================= */
+client.on('messageCreate', async (msg) => {
+    if (msg.author.bot) return;
+    if (msg.channel.id !== CHAT_CHANNEL_ID) return;
+
+    const mem = getMemory(msg.author);
+
+    // วิเคราะห์อารมณ์ (ยังไม่ใส่ history)
+    const t = msg.content;
+    mem.affinity++;
+
+    if (/รัก|คิดถึง|ชอบ/.test(t)) mem.mood = 'affection';
+    else if (/เศร้า|เสียใจ/.test(t)) mem.mood = 'sad';
+    else if (/โกรธ|โมโห/.test(t)) mem.mood = 'angry';
+    else mem.mood = 'neutral';
 
     try {
-        await message.channel.sendTyping();
-        const memory = updateMemory(message);
-        const reply = await getChatResponse(message.content, memory);
-        await message.reply(reply);
+        await msg.channel.sendTyping();
+
+        const reply = await getChatResponse(t, mem);
+
+        // ✅ ตอบ Discord แค่ครั้งเดียว
+        await msg.reply(reply);
+
+        // ✅ ค่อยบันทึก memory หลังตอบ
+        mem.history.push({ role: 'user', content: t });
+        mem.history.push({ role: 'assistant', content: reply });
+
+        // จำกัด history
+        if (mem.history.length > 10) {
+            mem.history = mem.history.slice(-10);
+        }
+
     } catch (e) {
         console.error(e);
-        message.reply('เหี้ย…พัง');
     }
 });
 
-/* =========================
-   6. Ready + Login
-========================= */
+/* ================= Ready ================= */
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
 });
