@@ -32,31 +32,35 @@ let DB = fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE)) :
 function saveDB() { fs.writeFileSync(MEMORY_FILE, JSON.stringify(DB, null, 2)); }
 function memOf(user) {
     if (!DB[user.id]) DB[user.id] = { 
-        name: user.username, affinity:0, trust:0, fear:0, tease:0, mood:'neutral', sulk:0, tension:0,
+        name: user.username,
+        affinity:0, trust:0, fear:0, tease:0, mood:'neutral', sulk:0, tension:0,
         lastSeen:Date.now(), talkback:false, talkedBack:false, history:[]
     };
     return DB[user.id];
 }
 
-// ---------------- Talkback 20 วิ -----------------
+// ---------------- Auto-talk ทุก 10 นาที -----------------
 setInterval(async () => {
     const now = Date.now();
     for (const uid in DB) {
         const mem = DB[uid];
-        if (!mem.talkback || mem.talkedBack) continue;
+        if (!mem.talkback) continue;
+
         const gap = now - mem.lastSeen;
-        if (gap >= 20000) {
-            mem.talkedBack = true;
+        if (gap >= 10 * 60 * 1000) { // 10 นาที
+            mem.lastSeen = now;
             try {
-                const channel = await client.channels.fetch(process.env.CHAT_CHANNEL_ID);
+                const channel = client.channels.cache.find(c => c.isTextBased());
                 if (!channel) continue;
-                const reply = await talk('เงียบไปนานแล้ว', mem);
+
+                const reply = await talk('เงียบไปนานแล้ว...', mem);
                 await channel.send(reply);
+
                 mem.history.push({ role: 'assistant', content: reply });
                 mem.history = mem.history.slice(-50);
                 saveDB();
             } catch (e) {
-                console.error('Talkback error:', e);
+                console.error('Auto-talk error:', e);
             }
         }
     }
@@ -94,7 +98,8 @@ async function talk(text, mem) {
 // ---------------- Message Handler -----------------
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
-    if (msg.channel.id !== process.env.CHAT_CHANNEL_ID) return;
+
+    console.log('Message received:', msg.content);
 
     const mem = memOf(msg.author);
     mem.lastSeen = Date.now();
