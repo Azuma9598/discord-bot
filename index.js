@@ -21,6 +21,11 @@ const client = new Client({
     ]
 });
 
+// ---------------- Global Error Handling -----------------
+client.on('error', err => console.error('Discord Client Error:', err));
+client.on('warn', info => console.warn('Discord Client Warning:', info));
+process.on('unhandledRejection', err => console.error('Unhandled Rejection:', err));
+
 // ---------------- Memory -----------------
 const MEMORY_FILE = './memory.json';
 let DB = fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE)) : {};
@@ -42,13 +47,17 @@ setInterval(async () => {
         const gap = now - mem.lastSeen;
         if (gap >= 20000) {
             mem.talkedBack = true;
-            const channel = await client.channels.fetch(process.env.CHAT_CHANNEL_ID);
-            if (!channel) continue;
-            const reply = await talk('เงียบไปนานแล้ว', mem);
-            await channel.send(reply);
-            mem.history.push({ role: 'assistant', content: reply });
-            mem.history = mem.history.slice(-50);
-            saveDB();
+            try {
+                const channel = await client.channels.fetch(process.env.CHAT_CHANNEL_ID);
+                if (!channel) continue;
+                const reply = await talk('เงียบไปนานแล้ว', mem);
+                await channel.send(reply);
+                mem.history.push({ role: 'assistant', content: reply });
+                mem.history = mem.history.slice(-50);
+                saveDB();
+            } catch (e) {
+                console.error('Talkback error:', e);
+            }
         }
     }
 }, 5000);
@@ -77,7 +86,7 @@ async function talk(text, mem) {
         const data = await res.json();
         return data?.content?.[0]?.text || 'เงียบไปเลย';
     } catch (e) {
-        console.error('Claude error', e);
+        console.error('Claude API error:', e);
         return 'วันนี้หัวไม่แล่น';
     }
 }
@@ -93,12 +102,16 @@ client.on('messageCreate', async msg => {
     mem.history.push({ role: 'user', content: msg.content });
     mem.history = mem.history.slice(-50);
 
-    await msg.channel.sendTyping();
-    const reply = await talk(msg.content, mem);
-    await msg.reply(reply);
-    mem.history.push({ role: 'assistant', content: reply });
-    mem.history = mem.history.slice(-50);
-    saveDB();
+    try {
+        await msg.channel.sendTyping();
+        const reply = await talk(msg.content, mem);
+        await msg.reply(reply);
+        mem.history.push({ role: 'assistant', content: reply });
+        mem.history = mem.history.slice(-50);
+        saveDB();
+    } catch (e) {
+        console.error('Message reply error:', e);
+    }
 });
 
 // ---------------- Slash Commands -----------------
@@ -129,51 +142,56 @@ client.on('interactionCreate', async i => {
     const mem = memOf(i.user);
     if (!i.isChatInputCommand()) return;
 
-    if (i.commandName === 'join') {
-        if (!i.member.voice.channel) return i.reply({ content: '❌ ต้องอยู่ VC ก่อน', ephemeral: true });
-        vcConnection = joinVoiceChannel({
-            channelId: i.member.voice.channel.id,
-            guildId: i.guild.id,
-            adapterCreator: i.guild.voiceAdapterCreator
-        });
-        vcConnection.subscribe(audioPlayer);
-        return i.reply({ content: '✅ เข้าห้อง VC แล้ว', ephemeral: true });
-    }
+    try {
+        if (i.commandName === 'join') {
+            if (!i.member.voice.channel) return i.reply({ content: '❌ ต้องอยู่ VC ก่อน', ephemeral: true });
+            vcConnection = joinVoiceChannel({
+                channelId: i.member.voice.channel.id,
+                guildId: i.guild.id,
+                adapterCreator: i.guild.voiceAdapterCreator
+            });
+            vcConnection.subscribe(audioPlayer);
+            return i.reply({ content: '✅ เข้าห้อง VC แล้ว', ephemeral: true });
+        }
 
-    if (i.commandName === 'play') {
-        const url = i.options.getString('url');
-        if (!vcConnection) return i.reply({ content: '❌ บอทยังไม่ได้เข้าห้อง VC', ephemeral: true });
-        const stream = ytdl(url, { filter: 'audioonly' });
-        audioPlayer.play(createAudioResource(stream));
-        return i.reply({ content: `🎵 กำลังเล่น: ${url}`, ephemeral: true });
-    }
+        if (i.commandName === 'play') {
+            const url = i.options.getString('url');
+            if (!vcConnection) return i.reply({ content: '❌ บอทยังไม่ได้เข้าห้อง VC', ephemeral: true });
+            const stream = ytdl(url, { filter: 'audioonly' });
+            audioPlayer.play(createAudioResource(stream));
+            return i.reply({ content: `🎵 กำลังเล่น: ${url}`, ephemeral: true });
+        }
 
-    if (i.commandName === 'talkback') {
-        mem.talkback = i.options.getString('onoff') === 'on';
-        mem.talkedBack = false;
-        saveDB();
-        return i.reply({ content: 'ตั้งค่า talkback แล้ว', ephemeral: true });
-    }
+        if (i.commandName === 'talkback') {
+            mem.talkback = i.options.getString('onoff') === 'on';
+            mem.talkedBack = false;
+            saveDB();
+            return i.reply({ content: 'ตั้งค่า talkback แล้ว', ephemeral: true });
+        }
 
-    if (i.commandName === 'add_personal') {
-        mem.affinity += i.options.getInteger('จำนวน');
-        saveDB();
-        return i.reply({ content: `ความสนิทตอนนี้ ${mem.affinity}`, ephemeral: true });
-    }
+        if (i.commandName === 'add_personal') {
+            mem.affinity += i.options.getInteger('จำนวน');
+            saveDB();
+            return i.reply({ content: `ความสนิทตอนนี้ ${mem.affinity}`, ephemeral: true });
+        }
 
-    if (i.commandName === 'clear') {
-        if (!i.member.permissions.has(PermissionFlagsBits.ManageMessages))
-            return i.reply({ content: '❌ ไม่มีสิทธิ์', ephemeral: true });
-        const n = i.options.getInteger('จำนวน');
-        const deleted = await i.channel.bulkDelete(n, true);
-        return i.reply({ content: `🚮 ลบ ${deleted.size} ข้อความ`, ephemeral: true });
-    }
+        if (i.commandName === 'clear') {
+            if (!i.member.permissions.has(PermissionFlagsBits.ManageMessages))
+                return i.reply({ content: '❌ ไม่มีสิทธิ์', ephemeral: true });
+            const n = i.options.getInteger('จำนวน');
+            const deleted = await i.channel.bulkDelete(n, true);
+            return i.reply({ content: `🚮 ลบ ${deleted.size} ข้อความ`, ephemeral: true });
+        }
 
-    if (i.commandName === 'send') {
-        const msg = i.options.getString('ข้อความ');
-        const ch = i.options.getChannel('ห้อง');
-        await ch.send(msg);
-        return i.reply({ content: '✅ ส่งข้อความแล้ว', ephemeral: true });
+        if (i.commandName === 'send') {
+            const msg = i.options.getString('ข้อความ');
+            const ch = i.options.getChannel('ห้อง');
+            await ch.send(msg);
+            return i.reply({ content: '✅ ส่งข้อความแล้ว', ephemeral: true });
+        }
+    } catch (e) {
+        console.error('Slash command error:', e);
+        try { await i.reply({ content: '❌ เกิดข้อผิดพลาด', ephemeral: true }); } catch {}
     }
 });
 
