@@ -1,164 +1,180 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { joinVoiceChannel, createAudioPlayer, createAudioResource } from '@discordjs/voice';
-import ytdl from 'ytdl-core';
-import fs from 'fs';
-import express from 'express';
-import fetch from 'node-fetch';
+require('dotenv').config();
+const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource } = require('@discordjs/voice');
+const ytdl = require('ytdl-core');
+const express = require('express');
+const fs = require('fs');
+const fetch = require('node-fetch');
 
 // ---------------- Express -----------------
 const app = express();
 app.get('/', (_, res) => res.send('🤖 Bot running'));
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3000, () => console.log('🌐 Web server running'));
 
 // ---------------- Discord Client -----------------
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
+    ]
 });
 
 // ---------------- Memory -----------------
 const MEMORY_FILE = './memory.json';
 let DB = fs.existsSync(MEMORY_FILE) ? JSON.parse(fs.readFileSync(MEMORY_FILE)) : {};
-function saveDB(){ fs.writeFileSync(MEMORY_FILE, JSON.stringify(DB, null, 2)); }
-function memOf(user){
-  if(!DB[user.id]) DB[user.id] = { name:user.username, affinity:0, trust:0, fear:0, tease:0, mood:'neutral', sulk:0, tension:0, lastSeen:Date.now(), talkback:false, talkedBack:false, history:[], habit:{} };
-  return DB[user.id];
+function saveDB() { fs.writeFileSync(MEMORY_FILE, JSON.stringify(DB, null, 2)); }
+function memOf(user) {
+    if (!DB[user.id]) DB[user.id] = { 
+        name: user.username, affinity:0, trust:0, fear:0, tease:0, mood:'neutral', sulk:0, tension:0,
+        lastSeen:Date.now(), talkback:false, talkedBack:false, history:[]
+    };
+    return DB[user.id];
 }
 
 // ---------------- Talkback 20 วิ -----------------
-setInterval(async ()=>{
-  const now=Date.now();
-  for(const uid in DB){
-    const mem=DB[uid];
-    if(!mem.talkback || mem.talkedBack) continue;
-    const gap=now-mem.lastSeen;
-    if(gap>=20000){
-      mem.talkedBack=true;
-      const channel = await client.channels.fetch(process.env.CHAT_CHANNEL_ID);
-      if(!channel) continue;
-      const reply = await talk('เงียบไปนานแล้ว', mem);
-      await channel.send(reply);
-      mem.history.push({role:'assistant', content:reply});
-      mem.history = mem.history.slice(-50);
-      saveDB();
+setInterval(async () => {
+    const now = Date.now();
+    for (const uid in DB) {
+        const mem = DB[uid];
+        if (!mem.talkback || mem.talkedBack) continue;
+        const gap = now - mem.lastSeen;
+        if (gap >= 20000) {
+            mem.talkedBack = true;
+            const channel = await client.channels.fetch(process.env.CHAT_CHANNEL_ID);
+            if (!channel) continue;
+            const reply = await talk('เงียบไปนานแล้ว', mem);
+            await channel.send(reply);
+            mem.history.push({ role: 'assistant', content: reply });
+            mem.history = mem.history.slice(-50);
+            saveDB();
+        }
     }
-  }
-},5000);
+}, 5000);
 
 // ---------------- Claude API -----------------
-async function talk(text, mem){
-  try{
-    const res = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':process.env.ANTHROPIC_API_KEY,
-        'anthropic-version':'2023-06-01'
-      },
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:350,
-        system:`คุณเป็นคนธรรมดาที่มีอารมณ์ ปากแข็ง แต่แคร์
+async function talk(text, mem) {
+    try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 350,
+                system: `
+คุณเป็นคนธรรมดาที่มีอารมณ์ ปากแข็ง แต่แคร์
 เวลาตอนนี้: ${new Date().getHours()} นาฬิกา
 สถานะ: affinity:${mem.affinity} trust:${mem.trust} fear:${mem.fear} tease:${mem.tease} sulk:${mem.sulk}
 รูปแบบตอบ: พูด: ... -# ความคิดในใจ`,
-        messages:[...mem.history, {role:'user', content:text}]
-      })
-    });
-    const data = await res.json();
-    return data?.content?.[0]?.text || 'เงียบไปเลย';
-  } catch(e){
-    console.error('Claude error', e);
-    return 'วันนี้หัวไม่แล่น';
-  }
+                messages: [...mem.history, { role: 'user', content: text }]
+            })
+        });
+        const data = await res.json();
+        return data?.content?.[0]?.text || 'เงียบไปเลย';
+    } catch (e) {
+        console.error('Claude error', e);
+        return 'วันนี้หัวไม่แล่น';
+    }
 }
 
-// ---------------- Messages -----------------
-client.on('messageCreate', async msg=>{
-  if(msg.author.bot) return;
-  if(msg.channel.id !== process.env.CHAT_CHANNEL_ID) return;
+// ---------------- Message Handler -----------------
+client.on('messageCreate', async msg => {
+    if (msg.author.bot) return;
+    if (msg.channel.id !== process.env.CHAT_CHANNEL_ID) return;
 
-  const mem = memOf(msg.author);
-  mem.lastSeen = Date.now();
-  mem.talkedBack=false;
-  mem.history.push({role:'user', content:msg.content});
-  mem.history = mem.history.slice(-50);
+    const mem = memOf(msg.author);
+    mem.lastSeen = Date.now();
+    mem.talkedBack = false;
+    mem.history.push({ role: 'user', content: msg.content });
+    mem.history = mem.history.slice(-50);
 
-  await msg.channel.sendTyping();
-  const reply = await talk(msg.content, mem);
-  await msg.reply(reply);
-  mem.history.push({role:'assistant', content:reply});
-  mem.history = mem.history.slice(-50);
-  saveDB();
+    await msg.channel.sendTyping();
+    const reply = await talk(msg.content, mem);
+    await msg.reply(reply);
+    mem.history.push({ role: 'assistant', content: reply });
+    mem.history = mem.history.slice(-50);
+    saveDB();
 });
 
 // ---------------- Slash Commands -----------------
 let vcConnection = null;
 const audioPlayer = createAudioPlayer();
 
-client.once('ready', async ()=>{
-  await client.application.commands.set([
-    new SlashCommandBuilder().setName('join').setDescription('ให้บอทเข้าห้อง VC'),
-    new SlashCommandBuilder().setName('play').setDescription('เล่นเพลง YouTube').addStringOption(o=>o.setName('url').setRequired(true)),
-    new SlashCommandBuilder().setName('talkback').setDescription('เปิด/ปิด talkback').addStringOption(o=>o.setName('onoff').addChoices({name:'on',value:'on'},{name:'off',value:'off'}).setRequired(true)),
-    new SlashCommandBuilder().setName('add_personal').setDescription('ปรับความสนิท').addIntegerOption(o=>o.setName('จำนวน').setRequired(true)),
-    new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ').addIntegerOption(o=>o.setName('จำนวน').setRequired(true)),
-    new SlashCommandBuilder().setName('send').setDescription('ส่งข้อความ').addStringOption(o=>o.setName('ข้อความ').setRequired(true)).addChannelOption(o=>o.setName('ห้อง').setRequired(true))
-  ]);
-  console.log(`✅ Bot ready: ${client.user.tag}`);
+client.once('ready', async () => {
+    await client.application.commands.set([
+        new SlashCommandBuilder().setName('join').setDescription('ให้บอทเข้าห้อง VC'),
+        new SlashCommandBuilder().setName('play').setDescription('เล่นเพลง YouTube')
+            .addStringOption(o => o.setName('url').setRequired(true)),
+        new SlashCommandBuilder().setName('talkback').setDescription('เปิด/ปิด talkback')
+            .addStringOption(o => o.setName('onoff')
+                .addChoices({ name:'on', value:'on' }, { name:'off', value:'off' })
+                .setRequired(true)),
+        new SlashCommandBuilder().setName('add_personal').setDescription('ปรับความสนิท')
+            .addIntegerOption(o => o.setName('จำนวน').setRequired(true)),
+        new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ')
+            .addIntegerOption(o => o.setName('จำนวน').setRequired(true)),
+        new SlashCommandBuilder().setName('send').setDescription('ส่งข้อความ')
+            .addStringOption(o => o.setName('ข้อความ').setRequired(true))
+            .addChannelOption(o => o.setName('ห้อง').setRequired(true))
+    ]);
+    console.log(`✅ Bot ready: ${client.user.tag}`);
 });
 
-client.on('interactionCreate', async i=>{
-  const mem = memOf(i.user);
+client.on('interactionCreate', async i => {
+    const mem = memOf(i.user);
+    if (!i.isChatInputCommand()) return;
 
-  if(!i.isChatInputCommand()) return;
+    if (i.commandName === 'join') {
+        if (!i.member.voice.channel) return i.reply({ content: '❌ ต้องอยู่ VC ก่อน', ephemeral: true });
+        vcConnection = joinVoiceChannel({
+            channelId: i.member.voice.channel.id,
+            guildId: i.guild.id,
+            adapterCreator: i.guild.voiceAdapterCreator
+        });
+        vcConnection.subscribe(audioPlayer);
+        return i.reply({ content: '✅ เข้าห้อง VC แล้ว', ephemeral: true });
+    }
 
-  if(i.commandName==='join'){
-    if(!i.member.voice.channel) return i.reply({content:'❌ ต้องอยู่ VC ก่อน',ephemeral:true});
-    vcConnection = joinVoiceChannel({channelId:i.member.voice.channel.id,guildId:i.guild.id,adapterCreator:i.guild.voiceAdapterCreator});
-    vcConnection.subscribe(audioPlayer);
-    return i.reply({content:'✅ เข้าห้อง VC แล้ว',ephemeral:true});
-  }
+    if (i.commandName === 'play') {
+        const url = i.options.getString('url');
+        if (!vcConnection) return i.reply({ content: '❌ บอทยังไม่ได้เข้าห้อง VC', ephemeral: true });
+        const stream = ytdl(url, { filter: 'audioonly' });
+        audioPlayer.play(createAudioResource(stream));
+        return i.reply({ content: `🎵 กำลังเล่น: ${url}`, ephemeral: true });
+    }
 
-  if(i.commandName==='play'){
-    const url = i.options.getString('url');
-    if(!vcConnection) return i.reply({content:'❌ บอทยังไม่ได้เข้าห้อง VC',ephemeral:true});
-    const stream = ytdl(url,{filter:'audioonly'});
-    audioPlayer.play(createAudioResource(stream));
-    return i.reply({content:`🎵 กำลังเล่น: ${url}`,ephemeral:true});
-  }
+    if (i.commandName === 'talkback') {
+        mem.talkback = i.options.getString('onoff') === 'on';
+        mem.talkedBack = false;
+        saveDB();
+        return i.reply({ content: 'ตั้งค่า talkback แล้ว', ephemeral: true });
+    }
 
-  if(i.commandName==='talkback'){
-    mem.talkback = i.options.getString('onoff')==='on';
-    mem.talkedBack = false;
-    saveDB();
-    return i.reply({content:'ตั้งค่า talkback แล้ว',ephemeral:true});
-  }
+    if (i.commandName === 'add_personal') {
+        mem.affinity += i.options.getInteger('จำนวน');
+        saveDB();
+        return i.reply({ content: `ความสนิทตอนนี้ ${mem.affinity}`, ephemeral: true });
+    }
 
-  if(i.commandName==='add_personal'){
-    mem.affinity += i.options.getInteger('จำนวน');
-    saveDB();
-    return i.reply({content:`ความสนิทตอนนี้ ${mem.affinity}`,ephemeral:true});
-  }
+    if (i.commandName === 'clear') {
+        if (!i.member.permissions.has(PermissionFlagsBits.ManageMessages))
+            return i.reply({ content: '❌ ไม่มีสิทธิ์', ephemeral: true });
+        const n = i.options.getInteger('จำนวน');
+        const deleted = await i.channel.bulkDelete(n, true);
+        return i.reply({ content: `🚮 ลบ ${deleted.size} ข้อความ`, ephemeral: true });
+    }
 
-  if(i.commandName==='clear'){
-    if(!i.member.permissions.has(PermissionFlagsBits.ManageMessages))
-      return i.reply({content:'❌ ไม่มีสิทธิ์',ephemeral:true});
-    const n = i.options.getInteger('จำนวน');
-    const deleted = await i.channel.bulkDelete(n,true);
-    return i.reply({content:`🚮 ลบ ${deleted.size} ข้อความ`,ephemeral:true});
-  }
-
-  if(i.commandName==='send'){
-    const msg = i.options.getString('ข้อความ');
-    const ch = i.options.getChannel('ห้อง');
-    await ch.send(msg);
-    return i.reply({content:'✅ ส่งข้อความแล้ว',ephemeral:true});
-  }
+    if (i.commandName === 'send') {
+        const msg = i.options.getString('ข้อความ');
+        const ch = i.options.getChannel('ห้อง');
+        await ch.send(msg);
+        return i.reply({ content: '✅ ส่งข้อความแล้ว', ephemeral: true });
+    }
 });
 
 // ---------------- Login -----------------
