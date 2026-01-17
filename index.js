@@ -66,6 +66,12 @@ setInterval(async () => {
 // ---------------- Claude API -----------------
 async function talk(text, mem) {
     try {
+        // Clean history: only user/assistant
+        const messages = mem.history
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .concat([{ role: 'user', content: text }])
+            .slice(-50);
+
         const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -81,7 +87,7 @@ async function talk(text, mem) {
 เวลาตอนนี้: ${new Date().getHours()} นาฬิกา
 สถานะ: affinity:${mem.affinity} trust:${mem.trust} fear:${mem.fear} tease:${mem.tease} sulk:${mem.sulk}
 รูปแบบตอบ: พูด: ... -# ความคิดในใจ`,
-                messages: mem.history.concat([{ role: 'user', content: text }])
+                messages
             })
         });
 
