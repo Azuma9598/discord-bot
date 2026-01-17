@@ -2,7 +2,9 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
-const fetch = require('node-fetch');
+
+// ---------------- Dynamic fetch import -----------------
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // ---------------- Express -----------------
 const app = express();
@@ -101,7 +103,7 @@ client.on('messageCreate', async msg => {
     const mem = memOf(msg.author);
     mem.lastSeen = Date.now();
 
-    // ถ้าเริ่มด้วย !
+    // ---------------- Command แบบ ! -----------------
     if (msg.content.startsWith('!')) {
         const args = msg.content.slice(1).trim().split(/ +/);
         const cmd = args.shift().toLowerCase();
