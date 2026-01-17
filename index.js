@@ -49,8 +49,9 @@ setInterval(async () => {
         if (gap >= 10 * 60 * 1000) { // 10 นาที
             mem.lastSeen = now;
             try {
-                const channel = client.channels.cache.find(c => c.isTextBased());
-                if (!channel) continue;
+                // บังคับห้องนี้เท่านั้น
+                const channel = client.channels.cache.get('1460867977305002125');
+                if (!channel || !channel.isTextBased()) continue;
                 const reply = await talk('เงียบไปนานแล้ว...', mem);
                 await channel.send(reply);
                 mem.history.push({ role: 'assistant', content: reply });
@@ -66,7 +67,6 @@ setInterval(async () => {
 // ---------------- Claude API -----------------
 async function talk(text, mem) {
     try {
-        // Clean history: only user/assistant
         const messages = mem.history
             .filter(m => m.role === 'user' || m.role === 'assistant')
             .concat([{ role: 'user', content: text }])
@@ -111,6 +111,9 @@ async function talk(text, mem) {
 // ---------------- Message Handler -----------------
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
+
+    // บังคับห้องนี้เท่านั้น
+    if (msg.channel.id !== '1460867977305002125') return;
 
     console.log('Message received:', msg.content);
 
