@@ -39,6 +39,50 @@ function memOf(user) {
     return DB[user.id];
 }
 
+// ---------------- Claude API (แก้แล้ว) -----------------
+async function talk(text, mem) {
+    try {
+        const messages = mem.history
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .concat([{ role: 'user', content: text }])
+            .slice(-50);
+
+        const payload = {
+            model: 'claude-sonnet-4-20250514',
+            max_tokens_to_sample: 350,
+            system: `
+คุณคือ Ken Kaneki ปากแข็ง แต่แคร์ roleplay
+สถานะ: affinity:${mem.affinity} trust:${mem.trust} tease:${mem.tease} sulk:${mem.sulk}
+รูปแบบตอบ: พูด: ... -# ความคิดในใจ`,
+            messages: messages
+        };
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.ANTHROPIC_API_KEY
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            console.error('Claude API Error:', res.status, await res.text());
+            return 'เอ๊ะ...งงไปหมด';
+        }
+
+        const data = await res.json();
+        if (data?.content && data.content[0]?.text) {
+            return data.content[0].text.trim();
+        }
+
+        return 'เอ๊ะ...งงไปหมด';
+    } catch (e) {
+        console.error('Claude API error:', e);
+        return 'เอ๊ะ...งงไปหมด';
+    }
+}
+
 // ---------------- Auto-talk ทุก 10 นาที -----------------
 setInterval(async () => {
     const now = Date.now();
@@ -64,58 +108,10 @@ setInterval(async () => {
     }
 }, 5000);
 
-// ---------------- Claude API -----------------
-async function talk(text, mem) {
-    try {
-        const messages = mem.history
-            .filter(m => m.role === 'user' || m.role === 'assistant')
-            .concat([{ role: 'user', content: text }])
-            .slice(-50);
-
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 350,
-                system: `
-คุณเป็นคนธรรมดาที่มีอารมณ์ ปากแข็ง แต่แคร์
-เวลาตอนนี้: ${new Date().getHours()} นาฬิกา
-สถานะ: affinity:${mem.affinity} trust:${mem.trust} fear:${mem.fear} tease:${mem.tease} sulk:${mem.sulk}
-รูปแบบตอบ: พูด: ... -# ความคิดในใจ`,
-                messages
-            })
-        });
-
-        if (!res.ok) {
-            console.error('Claude API Error:', res.status, await res.text());
-            return 'วันนี้หัวไม่แล่น';
-        }
-
-        const data = await res.json();
-        if (data?.content && data.content[0]?.text) {
-            return data.content[0].text;
-        }
-
-        return 'วันนี้หัวไม่แล่น';
-    } catch (e) {
-        console.error('Claude API error:', e);
-        return 'วันนี้หัวไม่แล่น';
-    }
-}
-
 // ---------------- Message Handler -----------------
 client.on('messageCreate', async msg => {
     if (msg.author.bot) return;
-
-    // บังคับห้องนี้เท่านั้น
-    if (msg.channel.id !== '1460867977305002125') return;
-
-    console.log('Message received:', msg.content);
+    if (msg.channel.id !== '1460867977305002125') return; // บังคับห้องนี้
 
     const mem = memOf(msg.author);
     mem.lastSeen = Date.now();
