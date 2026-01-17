@@ -21,7 +21,7 @@ const client = new Client({
     ]
 });
 
-// ---------------- Global Error Handling -----------------
+// ---------------- Error Handling -----------------
 client.on('error', err => console.error('Discord Client Error:', err));
 client.on('warn', info => console.warn('Discord Client Warning:', info));
 process.on('unhandledRejection', err => console.error('Unhandled Rejection:', err));
@@ -45,17 +45,14 @@ setInterval(async () => {
     for (const uid in DB) {
         const mem = DB[uid];
         if (!mem.talkback) continue;
-
         const gap = now - mem.lastSeen;
         if (gap >= 10 * 60 * 1000) { // 10 นาที
             mem.lastSeen = now;
             try {
                 const channel = client.channels.cache.find(c => c.isTextBased());
                 if (!channel) continue;
-
                 const reply = await talk('เงียบไปนานแล้ว...', mem);
                 await channel.send(reply);
-
                 mem.history.push({ role: 'assistant', content: reply });
                 mem.history = mem.history.slice(-50);
                 saveDB();
@@ -84,11 +81,21 @@ async function talk(text, mem) {
 เวลาตอนนี้: ${new Date().getHours()} นาฬิกา
 สถานะ: affinity:${mem.affinity} trust:${mem.trust} fear:${mem.fear} tease:${mem.tease} sulk:${mem.sulk}
 รูปแบบตอบ: พูด: ... -# ความคิดในใจ`,
-                messages: [...mem.history, { role: 'user', content: text }]
+                messages: mem.history.concat([{ role: 'user', content: text }])
             })
         });
+
+        if (!res.ok) {
+            console.error('Claude API Error:', res.status, await res.text());
+            return 'วันนี้หัวไม่แล่น';
+        }
+
         const data = await res.json();
-        return data?.content?.[0]?.text || 'เงียบไปเลย';
+        if (data?.content && data.content[0]?.text) {
+            return data.content[0].text;
+        }
+
+        return 'วันนี้หัวไม่แล่น';
     } catch (e) {
         console.error('Claude API error:', e);
         return 'วันนี้หัวไม่แล่น';
