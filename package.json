@@ -1,7 +1,6 @@
 {
   "name": "qr-discord-bot",
   "version": "1.0.0",
-  "description": "Discord QR Bot",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
