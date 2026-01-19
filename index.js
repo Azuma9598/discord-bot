@@ -16,13 +16,8 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-    res.send('🤖 Discord bot is running!');
-});
-
-app.listen(PORT, () => {
-    console.log(`🌐 Web server running on port ${PORT}`);
-});
+app.get('/', (req, res) => res.send('🤖 Discord bot is running!'));
+app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
 
 /* ================= DISCORD CLIENT ================= */
 const client = new Client({
@@ -76,63 +71,25 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('add_personal')
             .setDescription('เพิ่มค่า affinity')
-            .addIntegerOption(opt =>
-                opt.setName('amount')
-                    .setDescription('จำนวน')
-                    .setRequired(true)
-            ),
-        new SlashCommandBuilder()
-            .setName('clear')
-            .setDescription('ลบข้อความ')
-            .addIntegerOption(opt =>
-                opt.setName('amount')
-                    .setDescription('จำนวนข้อความที่จะลบ')
-            ),
-        new SlashCommandBuilder()
-            .setName('send')
-            .setDescription('ส่งข้อความ')
-            .addStringOption(opt =>
-                opt.setName('message')
-                    .setDescription('ข้อความ')
-                    .setRequired(true)
-            )
-            .addChannelOption(opt =>
-                opt.setName('channel')
-                    .setDescription('เลือก channel')
-            )
-            .addIntegerOption(opt =>
-                opt.setName('count')
-                    .setDescription('จำนวนครั้ง')
-            ),
+            .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวน').setRequired(true)),
+        new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ')
+            .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวนข้อความที่จะลบ')),
+        new SlashCommandBuilder().setName('send').setDescription('ส่งข้อความ')
+            .addStringOption(opt => opt.setName('message').setDescription('ข้อความ').setRequired(true))
+            .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel'))
+            .addIntegerOption(opt => opt.setName('count').setDescription('จำนวนครั้ง')),
         new SlashCommandBuilder().setName('ghoulmode').setDescription('เปิด Ghoul mode'),
+        new SlashCommandBuilder().setName('goonmode').setDescription('เปิด Goon mode'),
         new SlashCommandBuilder().setName('coffee').setDescription('ดื่มกาแฟ'),
-        new SlashCommandBuilder()
-            .setName('setchat')
-            .setDescription('ตั้งห้อง chat')
-            .addChannelOption(opt =>
-                opt.setName('channel')
-                    .setDescription('เลือก channel')
-                    .setRequired(true)
-            ),
+        new SlashCommandBuilder().setName('setchat').setDescription('ตั้งห้อง chat')
+            .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel').setRequired(true)),
         new SlashCommandBuilder().setName('stopchat').setDescription('หยุด chat ทุกห้อง'),
-        new SlashCommandBuilder()
-            .setName('autochat')
-            .setDescription('เปิด/ปิด autochat')
-            .addStringOption(opt =>
-                opt.setName('toggle')
-                    .setDescription('on หรือ off')
-                    .setRequired(true)
-                    .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })
-            ),
+        new SlashCommandBuilder().setName('autochat').setDescription('เปิด/ปิด autochat')
+            .addStringOption(opt => opt.setName('toggle').setDescription('on หรือ off').setRequired(true)
+            .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })),
         new SlashCommandBuilder().setName('token').setDescription('สุ่มคำเบียวๆ'),
-        new SlashCommandBuilder()
-            .setName('ประกาศ')
-            .setDescription('ประกาศข้อความ')
-            .addStringOption(opt =>
-                opt.setName('message')
-                    .setDescription('ข้อความที่จะประกาศ')
-                    .setRequired(true)
-            )
+        new SlashCommandBuilder().setName('ประกาศ').setDescription('ประกาศข้อความ')
+            .addStringOption(opt => opt.setName('message').setDescription('ข้อความที่จะประกาศ').setRequired(true))
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -152,13 +109,8 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    if (!interaction.inGuild()) {
-        return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
-    }
-
-    if (!interaction.member.roles.cache.has(ALLOWED_ROLE_ID)) {
-        return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
-    }
+    if (!interaction.inGuild()) return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
+    if (!interaction.member.roles.cache.has(ALLOWED_ROLE_ID)) return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
 
     const mem = memOf(interaction.user);
     mem.lastSeen = Date.now();
@@ -167,8 +119,7 @@ client.on('interactionCreate', async interaction => {
         switch (interaction.commandName) {
             case 'add_personal': {
                 const n = interaction.options.getInteger('amount');
-                mem.affinity += n;
-                saveDB();
+                mem.affinity += n; saveDB();
                 return interaction.reply(`💖 Affinity ตอนนี้: ${mem.affinity}`);
             }
             case 'clear': {
@@ -186,73 +137,38 @@ client.on('interactionCreate', async interaction => {
                 for (let i = 0; i < count; i++) await channel.send({ content });
                 return interaction.reply({ content: `✅ ส่งแล้ว ${count} ครั้ง`, ephemeral: true });
             }
-            case 'help': {
-                const embed = new EmbedBuilder()
-                    .setColor('#00ffff')
-                    .setTitle('📜 คำสั่งทั้งหมด')
-                    .setDescription(`
-/add_personal
-/clear
-/send
-/ghoulmode
-/coffee
-/setchat
-/stopchat
-/autochat
-/token
-/ประกาศ
-                `);
-                return interaction.reply({ embeds: [embed], ephemeral: true });
-            }
-            case 'ghoulmode': {
-                mem.mood = 'aggressive';
-                saveDB();
-                return interaction.reply('🩸 Ghoul mode activated');
-            }
-            case 'coffee': {
-                mem.affinity += 5;
-                saveDB();
-                return interaction.reply('☕ ดื่มกาแฟแล้ว');
-            }
+            case 'ghoulmode': { mem.mood = 'aggressive'; saveDB(); return interaction.reply('🩸 Ghoul mode activated'); }
+            case 'goonmode': { mem.mood = 'goon'; saveDB(); return interaction.reply('💀 Goon mode activated'); }
+            case 'coffee': { mem.affinity += 5; saveDB(); return interaction.reply('☕ ดื่มกาแฟแล้ว'); }
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
-                if (!channel || channel.type !== ChannelType.GuildText)
-                    return interaction.reply('❌ ต้องเป็น Text Channel');
+                if (!channel || channel.type !== ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
                 if (!mem.chatChannels.includes(channel.id)) mem.chatChannels.push(channel.id);
                 saveDB();
                 return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว`);
             }
-            case 'stopchat': {
-                mem.chatChannels = [];
-                mem.autochat = false;
-                saveDB();
-                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว');
-            }
-            case 'autochat': {
-                mem.autochat = interaction.options.getString('toggle') === 'on';
-                saveDB();
-                return interaction.reply(`🤖 Autochat ${mem.autochat ? 'เปิด' : 'ปิด'}`);
-            }
-            case 'token': {
-                const quote = ghoulQuotes[Math.floor(Math.random() * ghoulQuotes.length)];
-                return interaction.reply(`🗡️ "${quote}"`);
-            }
+            case 'stopchat': { mem.chatChannels = []; mem.autochat = false; saveDB(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
+            case 'autochat': { mem.autochat = interaction.options.getString('toggle') === 'on'; saveDB(); return interaction.reply(`🤖 Autochat ${mem.autochat ? 'เปิด' : 'ปิด'}`); }
+            case 'token': { const quote = ghoulQuotes[Math.floor(Math.random() * ghoulQuotes.length)]; return interaction.reply(`🗡️ "${quote}"`); }
             case 'ประกาศ': {
                 const content = interaction.options.getString('message');
-                const embed = new EmbedBuilder()
-                    .setColor('Red')
-                    .setTitle('📢 ประกาศ')
-                    .setDescription(content)
-                    .setTimestamp();
+                const embed = new EmbedBuilder().setColor('Red').setTitle('📢 ประกาศ').setDescription(content).setTimestamp();
                 const channel = client.channels.cache.get(ANNOUNCE_CHANNEL_ID) || interaction.channel;
                 await channel.send({ embeds: [embed] });
                 return interaction.reply({ content: '✅ ประกาศแล้ว', ephemeral: true });
             }
         }
-    } catch (err) {
-        console.error(err);
-        if (!interaction.replied)
-            interaction.reply({ content: '❌ เกิดข้อผิดพลาด', ephemeral: true });
+    } catch (err) { console.error(err); if (!interaction.replied) interaction.reply({ content: '❌ เกิดข้อผิดพลาด', ephemeral: true }); }
+});
+
+/* ================= MESSAGE RESPONSE ================= */
+// ตอบข้อความอัตโนมัติในห้องที่ตั้งไว้
+client.on('messageCreate', message => {
+    if (message.author.bot) return;
+
+    const mem = memOf(message.author);
+    if (mem.chatChannels.includes(message.channel.id)) {
+        message.reply('🤖 ข้าตอบกลับอัตโนมัติในห้องนี้!');
     }
 });
 
