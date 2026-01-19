@@ -68,32 +68,23 @@ Include mild profanity naturally if appropriate.`;
         }
 
         console.log('📤 Sending request to Claude API...');
-        
-        // Claude 3 API ล่าสุด
-        const res = await fetch('https://api.anthropic.com/v1/chat/completions', {
+
+        // ใช้ Claude 3.5 ล่าสุด
+        const res = await fetch('https://api.anthropic.com/v1/complete', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'x-api-key': process.env.ANTHROPIC_API_KEY
             },
             body: JSON.stringify({
-                model: 'claude-3',  // ใช้ Claude 3 ล่าสุด
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: message }
-                ],
+                model: 'claude-3.5',  // ใช้ model ล่าสุด
+                prompt: `${systemPrompt}\n\nHuman: ${message}\n\nAssistant:`,
                 max_tokens_to_sample: 200,
                 temperature: 0.7
             })
         });
-        
+
         const data = await res.json();
-        
-        console.log('📥 Claude API Response:', {
-            status: res.status,
-            ok: res.ok,
-            hasContent: !!data.completion
-        });
 
         if (!res.ok) {
             console.error('❌ Claude API error:', JSON.stringify(data, null, 2));
@@ -107,11 +98,11 @@ Include mild profanity naturally if appropriate.`;
             console.error('❌ No content in response:', data);
             return '❌ AI ไม่ได้ตอบกลับ';
         }
-        
+
         const reply = data.completion.trim();
         console.log('✅ Claude reply:', reply);
         return reply;
-        
+
     } catch(err) {
         console.error('❌ Claude API error:', err);
         if (err.code === 'ENOTFOUND') return '❌ ไม่สามารถเชื่อมต่อ API ได้ (ตรวจสอบอินเทอร์เน็ต)';
@@ -123,7 +114,7 @@ Include mild profanity naturally if appropriate.`;
 /* ================= REGISTER GLOBAL SLASH COMMANDS ================= */
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    
+
     if (!process.env.ANTHROPIC_API_KEY) {
         console.error('⚠️ WARNING: ANTHROPIC_API_KEY not found in .env file!');
     } else {
@@ -157,8 +148,8 @@ client.once('ready', async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
         console.log('✅ Global slash commands registered!');
-    } catch (err) { 
-        console.error('❌ Failed to register commands:', err); 
+    } catch (err) {
+        console.error('❌ Failed to register commands:', err);
     }
 });
 
@@ -189,11 +180,11 @@ client.on('interactionCreate', async interaction => {
                 chatChannels.add(channel.id);
                 return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว (bot จะตอบกลับข้อความในห้องนี้)`);
             }
-            case 'stopchat': { 
-                chatChannels.clear(); 
-                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); 
+            case 'stopchat': {
+                chatChannels.clear();
+                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว');
             }
-            case 'token': { 
+            case 'token': {
                 const quotes = [
                     "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
                     "โลกนี้มันเน่า… และข้าจะเผามัน",
@@ -223,10 +214,10 @@ client.on('messageCreate', async message => {
         const mem = memOf(message.author);
         await message.channel.sendTyping();
         const reply = await getClaudeReply(message.content, mem);
-        setTimeout(() => { 
+        setTimeout(() => {
             message.reply(reply).catch(err => console.error('❌ Failed to send reply:', err));
         }, Math.floor(Math.random() * 2000) + 500);
-        
+
     } catch(err) {
         console.error('❌ Message handling error:', err);
         message.reply('❌ เกิดข้อผิดพลาดในการประมวลผล').catch(console.error);
