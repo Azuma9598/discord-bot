@@ -10,7 +10,6 @@ const {
     Routes,
     SlashCommandBuilder
 } = require('discord.js');
-const fetch = require('node-fetch');
 
 /* ================= WEB SERVER ================= */
 const app = express();
@@ -65,7 +64,6 @@ Use:
 Include mild profanity naturally if appropriate.`;
 
     try {
-        // ตรวจสอบว่ามี API key หรือไม่
         if (!process.env.ANTHROPIC_API_KEY) {
             console.error('❌ ไม่พบ ANTHROPIC_API_KEY ใน .env file');
             return '❌ Bot ไม่ได้ตั้งค่า API key';
@@ -101,20 +99,12 @@ Include mild profanity naturally if appropriate.`;
         
         if (!res.ok) {
             console.error('❌ Claude API error:', JSON.stringify(data, null, 2));
-            
-            // แสดง error ที่ละเอียดขึ้น
-            if (data.error?.type === 'authentication_error') {
-                return '❌ API Key ไม่ถูกต้อง';
-            } else if (data.error?.type === 'rate_limit_error') {
-                return '❌ ใช้งาน API เกินจำนวนที่กำหนด';
-            } else if (data.error?.type === 'invalid_request_error') {
-                return `❌ Request ไม่ถูกต้อง: ${data.error?.message}`;
-            }
-            
+            if (data.error?.type === 'authentication_error') return '❌ API Key ไม่ถูกต้อง';
+            else if (data.error?.type === 'rate_limit_error') return '❌ ใช้งาน API เกินจำนวนที่กำหนด';
+            else if (data.error?.type === 'invalid_request_error') return `❌ Request ไม่ถูกต้อง: ${data.error?.message}`;
             return `❌ API Error: ${data.error?.message || 'Unknown error'}`;
         }
         
-        // ตรวจสอบว่ามี content หรือไม่
         if (!data.content || !data.content[0] || !data.content[0].text) {
             console.error('❌ No content in response:', data);
             return '❌ AI ไม่ได้ตอบกลับ';
@@ -122,24 +112,12 @@ Include mild profanity naturally if appropriate.`;
         
         const reply = data.content[0].text.trim();
         console.log('✅ Claude reply:', reply);
-        
         return reply;
         
     } catch(err) {
         console.error('❌ Claude API error:', err);
-        console.error('Error details:', {
-            name: err.name,
-            message: err.message,
-            stack: err.stack
-        });
-        
-        // แสดง error ที่เฉพาะเจาะจงมากขึ้น
-        if (err.code === 'ENOTFOUND') {
-            return '❌ ไม่สามารถเชื่อมต่อ API ได้ (ตรวจสอบอินเทอร์เน็ต)';
-        } else if (err.name === 'AbortError') {
-            return '❌ Request timeout';
-        }
-        
+        if (err.code === 'ENOTFOUND') return '❌ ไม่สามารถเชื่อมต่อ API ได้ (ตรวจสอบอินเทอร์เน็ต)';
+        else if (err.name === 'AbortError') return '❌ Request timeout';
         return `❌ เกิดข้อผิดพลาด: ${err.message}`;
     }
 }
@@ -148,7 +126,6 @@ Include mild profanity naturally if appropriate.`;
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
     
-    // ตรวจสอบว่ามี API key หรือไม่
     if (!process.env.ANTHROPIC_API_KEY) {
         console.error('⚠️ WARNING: ANTHROPIC_API_KEY not found in .env file!');
     } else {
@@ -246,17 +223,10 @@ client.on('messageCreate', async message => {
 
     try {
         const mem = memOf(message.author);
-        
-        // แสดง typing indicator
         await message.channel.sendTyping();
-        
         const reply = await getClaudeReply(message.content, mem);
-        
-        // ใช้ delay สุ่ม
         setTimeout(() => { 
-            message.reply(reply).catch(err => {
-                console.error('❌ Failed to send reply:', err);
-            });
+            message.reply(reply).catch(err => console.error('❌ Failed to send reply:', err));
         }, Math.floor(Math.random() * 2000) + 500);
         
     } catch(err) {
@@ -266,13 +236,8 @@ client.on('messageCreate', async message => {
 });
 
 /* ================= ERROR HANDLING ================= */
-client.on('error', error => {
-    console.error('❌ Discord client error:', error);
-});
-
-process.on('unhandledRejection', error => {
-    console.error('❌ Unhandled promise rejection:', error);
-});
+client.on('error', error => console.error('❌ Discord client error:', error));
+process.on('unhandledRejection', error => console.error('❌ Unhandled promise rejection:', error));
 
 /* ================= LOGIN ================= */
 client.login(process.env.DISCORD_TOKEN).catch(err => {
