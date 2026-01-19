@@ -1,13 +1,27 @@
+require('dotenv').config();
+
 const {
+    Client,
+    GatewayIntentBits,
     PermissionFlagsBits,
     ChannelType,
     EmbedBuilder
 } = require('discord.js');
 
+/* ===== CLIENT ===== */
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+/* ===== CONFIG ===== */
 const ALLOWED_ROLE_ID = '1432773041640706149';
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 
-/* ===== MOCK DATABASE ===== */
+/* ===== DATABASE (ตัวอย่าง) ===== */
 const db = {};
 function memOf(user) {
     if (!db[user.id]) {
@@ -17,30 +31,44 @@ function memOf(user) {
             lastSeen: Date.now(),
             history: [],
             chatChannels: [],
-            autochat: false,
-            talkback: false
+            autochat: false
         };
     }
     return db[user.id];
 }
-function saveDB() { /* save json here */ }
+function saveDB() {}
 
+/* ===== คำเบียวๆ ===== */
 const ghoulQuotes = [
-    "I am a ghoul.",
-    "If I die, I die.",
-    "This world is wrong."
+    "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
+    "โลกนี้มันเน่า… และข้าจะเผามัน",
+    "หากข้าคือปีศาจ เจ้าก็คือเหยื่อ",
+    "อย่ามองตาข้า ถ้าไม่อยากหลุดจากความจริง",
+    "ความอ่อนแอคือบาป",
+    "ข้าไม่ใช่ฮีโร่ ข้าคือจุดจบ"
 ];
+
+/* ===== READY ===== */
+client.once('ready', () => {
+    console.log(`🤖 Logged in as ${client.user.tag}`);
+});
 
 /* ===== INTERACTION ===== */
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     if (!interaction.inGuild()) {
-        return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
+        return interaction.reply({
+            content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์',
+            ephemeral: true
+        });
     }
 
     if (!interaction.member.roles.cache.has(ALLOWED_ROLE_ID)) {
-        return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
+        return interaction.reply({
+            content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้',
+            ephemeral: true
+        });
     }
 
     const mem = memOf(interaction.user);
@@ -49,14 +77,9 @@ client.on('interactionCreate', async interaction => {
     try {
         switch (interaction.commandName) {
 
-            case 'talkback': {
-                mem.talkback = interaction.options.getString('toggle') === 'on';
-                saveDB();
-                return interaction.reply(`✅ Talkback ${mem.talkback ? 'เปิด' : 'ปิด'} แล้ว`);
-            }
-
             case 'add_personal': {
-                mem.affinity += interaction.options.getInteger('amount');
+                const n = interaction.options.getInteger('amount');
+                mem.affinity += n;
                 saveDB();
                 return interaction.reply(`💖 Affinity ตอนนี้: ${mem.affinity}`);
             }
@@ -67,19 +90,27 @@ client.on('interactionCreate', async interaction => {
 
                 const amount = Math.min(interaction.options.getInteger('amount') || 1, 100);
                 const deleted = await interaction.channel.bulkDelete(amount, true);
-                return interaction.reply({ content: `🚮 ลบ ${deleted.size} ข้อความ`, ephemeral: true });
+
+                return interaction.reply({
+                    content: `🚮 ลบ ${deleted.size} ข้อความ`,
+                    ephemeral: true
+                });
             }
 
             case 'send': {
                 const content = interaction.options.getString('message');
-                const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+                const channel =
+                    interaction.options.getChannel('channel') || interaction.channel;
                 const count = Math.min(interaction.options.getInteger('count') || 1, 5);
 
                 for (let i = 0; i < count; i++) {
                     await channel.send({ content });
                 }
 
-                return interaction.reply({ content: `✅ ส่งแล้ว ${count} ครั้ง`, ephemeral: true });
+                return interaction.reply({
+                    content: `✅ ส่งแล้ว ${count} ครั้ง`,
+                    ephemeral: true
+                });
             }
 
             case 'help': {
@@ -87,12 +118,9 @@ client.on('interactionCreate', async interaction => {
                     .setColor('#00ffff')
                     .setTitle('📜 คำสั่งทั้งหมด')
                     .setDescription(`
-/talkback
 /add_personal
 /clear
 /send
-/status
-/reset
 /ghoulmode
 /coffee
 /setchat
@@ -101,41 +129,24 @@ client.on('interactionCreate', async interaction => {
 /token
 /ประกาศ
                     `);
-                return interaction.reply({ embeds: [embed], ephemeral: true });
-            }
 
-            case 'status': {
-                return interaction.reply(
-                    `💖 Affinity: ${mem.affinity}\n` +
-                    `😎 Mood: ${mem.mood}\n` +
-                    `🕒 Last seen: ${new Date(mem.lastSeen).toLocaleString()}\n` +
-                    `📢 Chat channels: ${mem.chatChannels.length || 'none'}\n` +
-                    `🤖 Autochat: ${mem.autochat}`
-                );
-            }
-
-            case 'reset': {
-                if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages))
-                    return interaction.reply({ content: '❌ ไม่มีสิทธิ์', ephemeral: true });
-
-                Object.assign(mem, {
-                    history: [],
-                    affinity: 0,
-                    mood: 'neutral'
+                return interaction.reply({
+                    embeds: [embed],
+                    ephemeral: true
                 });
-                saveDB();
-                return interaction.reply('🔄 รีเซ็ตเรียบร้อย');
             }
 
-            case 'ghoulmode':
+            case 'ghoulmode': {
                 mem.mood = 'aggressive';
                 saveDB();
                 return interaction.reply('🩸 Ghoul mode activated');
+            }
 
-            case 'coffee':
+            case 'coffee': {
                 mem.affinity += 5;
                 saveDB();
                 return interaction.reply('☕ ดื่มกาแฟแล้ว');
+            }
 
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
@@ -146,43 +157,61 @@ client.on('interactionCreate', async interaction => {
                     mem.chatChannels.push(channel.id);
 
                 saveDB();
-                return interaction.reply(`✅ ตั้งห้อง ${channel.name}`);
+                return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว`);
             }
 
-            case 'stopchat':
+            case 'stopchat': {
                 mem.chatChannels = [];
                 mem.autochat = false;
-                mem.talkback = false;
                 saveDB();
-                return interaction.reply('🛑 หยุดทั้งหมดแล้ว');
+                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว');
+            }
 
-            case 'autochat':
+            case 'autochat': {
                 mem.autochat = interaction.options.getString('toggle') === 'on';
                 saveDB();
-                return interaction.reply(`🤖 Autochat ${mem.autochat ? 'เปิด' : 'ปิด'}`);
+                return interaction.reply(
+                    `🤖 Autochat ${mem.autochat ? 'เปิด' : 'ปิด'}`
+                );
+            }
 
             case 'token': {
-                const quote = ghoulQuotes[Math.floor(Math.random() * ghoulQuotes.length)];
-                return interaction.reply(`🗡️ "${quote}" - Ken Kaneki`);
+                const quote =
+                    ghoulQuotes[Math.floor(Math.random() * ghoulQuotes.length)];
+                return interaction.reply(`🗡️ "${quote}"`);
             }
 
             case 'ประกาศ': {
                 const content = interaction.options.getString('message');
+
                 const embed = new EmbedBuilder()
                     .setColor('Red')
                     .setTitle('📢 ประกาศ')
                     .setDescription(content)
                     .setTimestamp();
 
-                const channel = client.channels.cache.get(ANNOUNCE_CHANNEL_ID);
+                const channel =
+                    client.channels.cache.get(ANNOUNCE_CHANNEL_ID) ||
+                    interaction.channel;
+
                 await channel.send({ embeds: [embed] });
 
-                return interaction.reply({ content: '✅ ประกาศแล้ว', ephemeral: true });
+                return interaction.reply({
+                    content: '✅ ประกาศแล้ว',
+                    ephemeral: true
+                });
             }
         }
     } catch (err) {
         console.error(err);
-        if (!interaction.replied)
-            interaction.reply({ content: '❌ เกิดข้อผิดพลาด', ephemeral: true });
+        if (!interaction.replied) {
+            interaction.reply({
+                content: '❌ เกิดข้อผิดพลาด',
+                ephemeral: true
+            });
+        }
     }
 });
+
+/* ===== LOGIN ===== */
+client.login(process.env.DISCORD_TOKEN);
