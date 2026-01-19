@@ -1,7 +1,7 @@
 {
   "name": "discord-bot",
   "version": "1.0.0",
-  "description": "Discord bot (discord.js v14, Node 20)",
+  "description": "Discord bot (discord.js v14, Node 20, Claude 3.5)",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
