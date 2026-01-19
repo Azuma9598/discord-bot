@@ -1,5 +1,4 @@
 require('dotenv').config();
-
 const express = require('express');
 const {
     Client,
@@ -11,11 +10,11 @@ const {
     Routes,
     SlashCommandBuilder
 } = require('discord.js');
+const fetch = require('node-fetch'); // Node 20 สามารถใช้ global fetch
 
 /* ================= WEB SERVER ================= */
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 app.get('/', (req, res) => res.send('🤖 Discord bot is running!'));
 app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
 
@@ -38,7 +37,7 @@ function memOf(user) {
     if (!db[user.id]) {
         db[user.id] = {
             affinity: 0,
-            mood: 'neutral',
+            mood: 'neutral',      // neutral / ghoul / goon
             lastSeen: Date.now(),
             history: [],
             chatChannels: [],
@@ -49,28 +48,47 @@ function memOf(user) {
 }
 function saveDB() {}
 
-/* ================= QUOTES ================= */
-const ghoulQuotes = [
-    "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
-    "โลกนี้มันเน่า… และข้าจะเผามัน",
-    "หากข้าคือปีศาจ เจ้าก็คือเหยื่อ",
-    "อย่ามองตาข้า ถ้าไม่อยากหลุดจากความจริง",
-    "ความอ่อนแอคือบาป",
-    "ข้าไม่ใช่ฮีโร่ ข้าคือจุดจบ",
-    "ข้าคือฝันร้ายของผู้กล้า",
-    "โลกนี้ไม่คู่ควรกับแสงสว่าง",
-    "ความกลัวคือพลัง",
-    "จงจมลงไปในความมืด"
-];
+/* ================= ANTHROPIC CLAUDE API ================= */
+async function getClaudeReply(message, mem) {
+    let style = '';
+    if(mem.mood==='ghoul') style = 'You are hungry for blood, violent, dark.';
+    else if(mem.mood==='goon') style = 'You are seductive, naughty, flirty.';
+    else style = 'You are calm, neutral, Ken Kaneki style.';
 
-/* ================= REGISTER SLASH COMMANDS ================= */
+    const prompt = `
+You are Ken Kaneki from Tokyo Ghoul. ${style}
+Respond to the human message below in his style.
+Use:
+.(ข้อความ) for actions
+-# ข้อความ for inner thoughts
+Include mild profanity naturally if appropriate.
+Human: ${message}
+Assistant:`;
+
+    const res = await fetch('https://api.anthropic.com/v1/complete', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.ANTHROPIC_API_KEY
+        },
+        body: JSON.stringify({
+            model: 'claude-v1',
+            prompt,
+            max_tokens_to_sample: 200,
+            temperature: 0.7,
+            stop_sequences: ["Human:"]
+        })
+    });
+    const data = await res.json();
+    return data.completion.trim();
+}
+
+/* ================= REGISTER GLOBAL SLASH COMMANDS ================= */
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder()
-            .setName('add_personal')
-            .setDescription('เพิ่มค่า affinity')
+        new SlashCommandBuilder().setName('add_personal').setDescription('เพิ่มค่า affinity')
             .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวน').setRequired(true)),
         new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ')
             .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวนข้อความที่จะลบ')),
@@ -78,8 +96,8 @@ client.once('ready', async () => {
             .addStringOption(opt => opt.setName('message').setDescription('ข้อความ').setRequired(true))
             .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel'))
             .addIntegerOption(opt => opt.setName('count').setDescription('จำนวนครั้ง')),
-        new SlashCommandBuilder().setName('ghoulmode').setDescription('เปิด Ghoul mode'),
-        new SlashCommandBuilder().setName('goonmode').setDescription('เปิด Goon mode'),
+        new SlashCommandBuilder().setName('ghoulmode').setDescription('เปิด/ปิด Ghoul mode'),
+        new SlashCommandBuilder().setName('goonmode').setDescription('เปิด/ปิด Goon mode'),
         new SlashCommandBuilder().setName('coffee').setDescription('ดื่มกาแฟ'),
         new SlashCommandBuilder().setName('setchat').setDescription('ตั้งห้อง chat')
             .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel').setRequired(true)),
@@ -93,22 +111,15 @@ client.once('ready', async () => {
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
     try {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commands }
-        );
-        console.log('✅ Slash commands registered!');
-    } catch (error) {
-        console.error(error);
-    }
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+        console.log('✅ Global slash commands registered!');
+    } catch (err) { console.error(err); }
 });
 
 /* ================= INTERACTION ================= */
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
     if (!interaction.inGuild()) return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
     if (!interaction.member.roles.cache.has(ALLOWED_ROLE_ID)) return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
 
@@ -116,60 +127,41 @@ client.on('interactionCreate', async interaction => {
     mem.lastSeen = Date.now();
 
     try {
-        switch (interaction.commandName) {
-            case 'add_personal': {
-                const n = interaction.options.getInteger('amount');
-                mem.affinity += n; saveDB();
-                return interaction.reply(`💖 Affinity ตอนนี้: ${mem.affinity}`);
+        switch(interaction.commandName){
+            case 'goonmode': {
+                mem.mood = (mem.mood==='goon')?'neutral':'goon';
+                saveDB();
+                return interaction.reply(`💀 Goon mode ${mem.mood==='goon'?'เปิด':'ปิด'} แล้ว`);
             }
-            case 'clear': {
-                if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages))
-                    return interaction.reply({ content: '❌ ไม่มีสิทธิ์', ephemeral: true });
-
-                const amount = Math.min(interaction.options.getInteger('amount') || 1, 100);
-                const deleted = await interaction.channel.bulkDelete(amount, true);
-                return interaction.reply({ content: `🚮 ลบ ${deleted.size} ข้อความ`, ephemeral: true });
+            case 'ghoulmode': {
+                mem.mood = (mem.mood==='ghoul')?'neutral':'ghoul';
+                saveDB();
+                return interaction.reply(`🩸 Ghoul mode ${mem.mood==='ghoul'?'เปิด':'ปิด'} แล้ว`);
             }
-            case 'send': {
-                const content = interaction.options.getString('message');
-                const channel = interaction.options.getChannel('channel') || interaction.channel;
-                const count = Math.min(interaction.options.getInteger('count') || 1, 5);
-                for (let i = 0; i < count; i++) await channel.send({ content });
-                return interaction.reply({ content: `✅ ส่งแล้ว ${count} ครั้ง`, ephemeral: true });
-            }
-            case 'ghoulmode': { mem.mood = 'aggressive'; saveDB(); return interaction.reply('🩸 Ghoul mode activated'); }
-            case 'goonmode': { mem.mood = 'goon'; saveDB(); return interaction.reply('💀 Goon mode activated'); }
-            case 'coffee': { mem.affinity += 5; saveDB(); return interaction.reply('☕ ดื่มกาแฟแล้ว'); }
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
-                if (!channel || channel.type !== ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
-                if (!mem.chatChannels.includes(channel.id)) mem.chatChannels.push(channel.id);
+                if(!channel||channel.type!==ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
+                if(!mem.chatChannels.includes(channel.id)) mem.chatChannels.push(channel.id);
                 saveDB();
                 return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว`);
             }
-            case 'stopchat': { mem.chatChannels = []; mem.autochat = false; saveDB(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
-            case 'autochat': { mem.autochat = interaction.options.getString('toggle') === 'on'; saveDB(); return interaction.reply(`🤖 Autochat ${mem.autochat ? 'เปิด' : 'ปิด'}`); }
-            case 'token': { const quote = ghoulQuotes[Math.floor(Math.random() * ghoulQuotes.length)]; return interaction.reply(`🗡️ "${quote}"`); }
-            case 'ประกาศ': {
-                const content = interaction.options.getString('message');
-                const embed = new EmbedBuilder().setColor('Red').setTitle('📢 ประกาศ').setDescription(content).setTimestamp();
-                const channel = client.channels.cache.get(ANNOUNCE_CHANNEL_ID) || interaction.channel;
-                await channel.send({ embeds: [embed] });
-                return interaction.reply({ content: '✅ ประกาศแล้ว', ephemeral: true });
-            }
+            case 'stopchat': { mem.chatChannels=[]; mem.autochat=false; saveDB(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
+            case 'token': { const quote = ghoulQuotes[Math.floor(Math.random()*ghoulQuotes.length)]; return interaction.reply(`🗡️ "${quote}"`); }
+            // ... เพิ่ม case อื่นตามต้องการ
         }
-    } catch (err) { console.error(err); if (!interaction.replied) interaction.reply({ content: '❌ เกิดข้อผิดพลาด', ephemeral: true }); }
+    } catch(err){ console.error(err); if(!interaction.replied) interaction.reply({content:'❌ เกิดข้อผิดพลาด',ephemeral:true}); }
 });
 
 /* ================= MESSAGE RESPONSE ================= */
-// ตอบข้อความอัตโนมัติในห้องที่ตั้งไว้
-client.on('messageCreate', message => {
-    if (message.author.bot) return;
-
+client.on('messageCreate', async message=>{
+    if(message.author.bot) return;
     const mem = memOf(message.author);
-    if (mem.chatChannels.includes(message.channel.id)) {
-        message.reply('🤖 ข้าตอบกลับอัตโนมัติในห้องนี้!');
-    }
+    if(!mem.chatChannels.includes(message.channel.id)) return;
+
+    try{
+        const reply = await getClaudeReply(message.content,mem);
+        setTimeout(()=>{ message.reply(reply); }, Math.floor(Math.random()*2000)+500);
+    }catch(err){ console.error(err); message.reply('❌ เกิดข้อผิดพลาด AI'); }
 });
 
 /* ================= LOGIN ================= */
