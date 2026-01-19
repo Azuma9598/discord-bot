@@ -43,7 +43,7 @@ async function talk(text, mem) {
 
         const payload = {
             model: 'claude-sonnet-4-20250514',
-            max_tokens_to_sample: 350,
+            max_tokens: 350,
             system: `คุณคือ Ken Kaneki ปากแข็ง แต่แคร์ roleplay
 สถานะ: affinity:${mem.affinity} mood:${mem.mood}
 ตอบสั้น กระชับ เบี้ยว โหด และแสดงความรู้สึกใน -#`,
@@ -54,7 +54,8 @@ async function talk(text, mem) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify(payload)
         });
