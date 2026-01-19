@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 Discord bot is running');
+    res.send('🤖 Discord bot is running!');
 });
 
 app.listen(PORT, () => {
@@ -34,7 +34,7 @@ const client = new Client({
 const ALLOWED_ROLE_ID = '1432773041640706149';
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 
-/* ================= DATABASE (MOCK) ================= */
+/* ================= DATABASE MOCK ================= */
 const db = {};
 function memOf(user) {
     if (!db[user.id]) {
