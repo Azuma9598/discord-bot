@@ -10,7 +10,7 @@ const {
     Routes,
     SlashCommandBuilder
 } = require('discord.js');
-const fetch = require('node-fetch'); // Node 20+ สามารถใช้ global fetch
+const fetch = require('node-fetch');
 
 /* ================= WEB SERVER ================= */
 const app = express();
@@ -32,7 +32,7 @@ const ALLOWED_ROLE_ID = '1432773041640706149';
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 
 /* ================= CHAT CHANNELS GLOBAL ================= */
-const chatChannels = new Set(); // เก็บ channel.id ของทุกคนที่ /setchat
+const chatChannels = new Set();
 
 /* ================= DATABASE MOCK ================= */
 const db = {};
@@ -40,7 +40,7 @@ function memOf(user) {
     if (!db[user.id]) {
         db[user.id] = {
             affinity: 0,
-            mood: 'neutral', // neutral / ghoul / goon
+            mood: 'neutral',
             lastSeen: Date.now(),
             history: [],
             autochat: false
@@ -65,6 +65,14 @@ Use:
 Include mild profanity naturally if appropriate.`;
 
     try {
+        // ตรวจสอบว่ามี API key หรือไม่
+        if (!process.env.ANTHROPIC_API_KEY) {
+            console.error('❌ ไม่พบ ANTHROPIC_API_KEY ใน .env file');
+            return '❌ Bot ไม่ได้ตั้งค่า API key';
+        }
+
+        console.log('📤 Sending request to Claude API...');
+        
         const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -85,21 +93,67 @@ Include mild profanity naturally if appropriate.`;
         
         const data = await res.json();
         
+        console.log('📥 Claude API Response:', {
+            status: res.status,
+            ok: res.ok,
+            hasContent: !!data.content
+        });
+        
         if (!res.ok) {
-            console.error('Claude API error:', data);
+            console.error('❌ Claude API error:', JSON.stringify(data, null, 2));
+            
+            // แสดง error ที่ละเอียดขึ้น
+            if (data.error?.type === 'authentication_error') {
+                return '❌ API Key ไม่ถูกต้อง';
+            } else if (data.error?.type === 'rate_limit_error') {
+                return '❌ ใช้งาน API เกินจำนวนที่กำหนด';
+            } else if (data.error?.type === 'invalid_request_error') {
+                return `❌ Request ไม่ถูกต้อง: ${data.error?.message}`;
+            }
+            
             return `❌ API Error: ${data.error?.message || 'Unknown error'}`;
         }
         
-        return data.content?.[0]?.text?.trim() || '❌ ไม่มีการตอบกลับจาก AI';
-    } catch(err){
-        console.error('Claude API error:', err);
-        return '❌ เกิดข้อผิดพลาด AI';
+        // ตรวจสอบว่ามี content หรือไม่
+        if (!data.content || !data.content[0] || !data.content[0].text) {
+            console.error('❌ No content in response:', data);
+            return '❌ AI ไม่ได้ตอบกลับ';
+        }
+        
+        const reply = data.content[0].text.trim();
+        console.log('✅ Claude reply:', reply);
+        
+        return reply;
+        
+    } catch(err) {
+        console.error('❌ Claude API error:', err);
+        console.error('Error details:', {
+            name: err.name,
+            message: err.message,
+            stack: err.stack
+        });
+        
+        // แสดง error ที่เฉพาะเจาะจงมากขึ้น
+        if (err.code === 'ENOTFOUND') {
+            return '❌ ไม่สามารถเชื่อมต่อ API ได้ (ตรวจสอบอินเทอร์เน็ต)';
+        } else if (err.name === 'AbortError') {
+            return '❌ Request timeout';
+        }
+        
+        return `❌ เกิดข้อผิดพลาด: ${err.message}`;
     }
 }
 
 /* ================= REGISTER GLOBAL SLASH COMMANDS ================= */
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
+    
+    // ตรวจสอบว่ามี API key หรือไม่
+    if (!process.env.ANTHROPIC_API_KEY) {
+        console.error('⚠️ WARNING: ANTHROPIC_API_KEY not found in .env file!');
+    } else {
+        console.log('✅ ANTHROPIC_API_KEY found');
+    }
 
     const commands = [
         new SlashCommandBuilder().setName('add_personal').setDescription('เพิ่มค่า affinity')
@@ -128,7 +182,9 @@ client.once('ready', async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
         console.log('✅ Global slash commands registered!');
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+        console.error('❌ Failed to register commands:', err); 
+    }
 });
 
 /* ================= INTERACTION ================= */
@@ -156,9 +212,12 @@ client.on('interactionCreate', async interaction => {
                 const channel = interaction.options.getChannel('channel');
                 if(!channel||channel.type!==ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
                 chatChannels.add(channel.id);
-                return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว`);
+                return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว (bot จะตอบกลับข้อความในห้องนี้)`);
             }
-            case 'stopchat': { chatChannels.clear(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
+            case 'stopchat': { 
+                chatChannels.clear(); 
+                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); 
+            }
             case 'token': { 
                 const quotes = [
                     "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
@@ -171,25 +230,52 @@ client.on('interactionCreate', async interaction => {
             }
         }
     } catch(err){
-        console.error(err);
-        if(!interaction.replied) interaction.reply({content:'❌ เกิดข้อผิดพลาด',ephemeral:true});
+        console.error('❌ Interaction error:', err);
+        if(!interaction.replied && !interaction.deferred) {
+            interaction.reply({content:'❌ เกิดข้อผิดพลาด',ephemeral:true}).catch(console.error);
+        }
     }
 });
 
 /* ================= MESSAGE RESPONSE ================= */
-client.on('messageCreate', async message=>{
+client.on('messageCreate', async message => {
     if(message.author.bot) return;
     if(!chatChannels.has(message.channel.id)) return;
 
-    try{
+    console.log(`💬 Received message from ${message.author.tag}: ${message.content}`);
+
+    try {
         const mem = memOf(message.author);
-        const reply = await getClaudeReply(message.content,mem);
-        setTimeout(()=>{ message.reply(reply); }, Math.floor(Math.random()*2000)+500);
-    } catch(err){
-        console.error('AI Error:', err);
-        message.reply('❌ เกิดข้อผิดพลาด AI');
+        
+        // แสดง typing indicator
+        await message.channel.sendTyping();
+        
+        const reply = await getClaudeReply(message.content, mem);
+        
+        // ใช้ delay สุ่ม
+        setTimeout(() => { 
+            message.reply(reply).catch(err => {
+                console.error('❌ Failed to send reply:', err);
+            });
+        }, Math.floor(Math.random() * 2000) + 500);
+        
+    } catch(err) {
+        console.error('❌ Message handling error:', err);
+        message.reply('❌ เกิดข้อผิดพลาดในการประมวลผล').catch(console.error);
     }
 });
 
+/* ================= ERROR HANDLING ================= */
+client.on('error', error => {
+    console.error('❌ Discord client error:', error);
+});
+
+process.on('unhandledRejection', error => {
+    console.error('❌ Unhandled promise rejection:', error);
+});
+
 /* ================= LOGIN ================= */
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN).catch(err => {
+    console.error('❌ Failed to login:', err);
+    process.exit(1);
+});
