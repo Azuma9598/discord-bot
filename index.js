@@ -10,7 +10,7 @@ const {
     Routes,
     SlashCommandBuilder
 } = require('discord.js');
-const fetch = require('node-fetch'); // Node 20 สามารถใช้ global fetch
+const fetch = require('node-fetch'); // Node 20+ สามารถใช้ global fetch
 
 /* ================= WEB SERVER ================= */
 const app = express();
@@ -31,16 +31,18 @@ const client = new Client({
 const ALLOWED_ROLE_ID = '1432773041640706149';
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 
+/* ================= CHAT CHANNELS GLOBAL ================= */
+const chatChannels = new Set(); // เก็บ channel.id ของทุกคนที่ /setchat
+
 /* ================= DATABASE MOCK ================= */
 const db = {};
 function memOf(user) {
     if (!db[user.id]) {
         db[user.id] = {
             affinity: 0,
-            mood: 'neutral',      // neutral / ghoul / goon
+            mood: 'neutral', // neutral / ghoul / goon
             lastSeen: Date.now(),
             history: [],
-            chatChannels: [],
             autochat: false
         };
     }
@@ -65,22 +67,27 @@ Include mild profanity naturally if appropriate.
 Human: ${message}
 Assistant:`;
 
-    const res = await fetch('https://api.anthropic.com/v1/complete', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': process.env.ANTHROPIC_API_KEY
-        },
-        body: JSON.stringify({
-            model: 'claude-v1',
-            prompt,
-            max_tokens_to_sample: 200,
-            temperature: 0.7,
-            stop_sequences: ["Human:"]
-        })
-    });
-    const data = await res.json();
-    return data.completion.trim();
+    try {
+        const res = await fetch('https://api.anthropic.com/v1/complete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': process.env.ANTHROPIC_API_KEY
+            },
+            body: JSON.stringify({
+                model: 'claude-v1',
+                prompt,
+                max_tokens_to_sample: 200,
+                temperature: 0.7,
+                stop_sequences: ["Human:"]
+            })
+        });
+        const data = await res.json();
+        return data.completion ? data.completion.trim() : '❌ ไม่มีการตอบกลับจาก AI';
+    } catch(err){
+        console.error('Claude API error:', err);
+        return '❌ เกิดข้อผิดพลาด AI';
+    }
 }
 
 /* ================= REGISTER GLOBAL SLASH COMMANDS ================= */
@@ -141,27 +148,40 @@ client.on('interactionCreate', async interaction => {
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
                 if(!channel||channel.type!==ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
-                if(!mem.chatChannels.includes(channel.id)) mem.chatChannels.push(channel.id);
-                saveDB();
+                chatChannels.add(channel.id);
                 return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว`);
             }
-            case 'stopchat': { mem.chatChannels=[]; mem.autochat=false; saveDB(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
-            case 'token': { const quote = ghoulQuotes[Math.floor(Math.random()*ghoulQuotes.length)]; return interaction.reply(`🗡️ "${quote}"`); }
-            // ... เพิ่ม case อื่นตามต้องการ
+            case 'stopchat': { chatChannels.clear(); return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว'); }
+            case 'token': { 
+                const quotes = [
+                    "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
+                    "โลกนี้มันเน่า… และข้าจะเผามัน",
+                    "หากข้าคือปีศาจ เจ้าก็คือเหยื่อ",
+                    "อย่ามองตาข้า ถ้าไม่อยากหลุดจากความจริง",
+                    "ความอ่อนแอคือบาป"
+                ];
+                return interaction.reply(`🗡️ "${quotes[Math.floor(Math.random()*quotes.length)]}"`);
+            }
         }
-    } catch(err){ console.error(err); if(!interaction.replied) interaction.reply({content:'❌ เกิดข้อผิดพลาด',ephemeral:true}); }
+    } catch(err){
+        console.error(err);
+        if(!interaction.replied) interaction.reply({content:'❌ เกิดข้อผิดพลาด',ephemeral:true});
+    }
 });
 
 /* ================= MESSAGE RESPONSE ================= */
 client.on('messageCreate', async message=>{
     if(message.author.bot) return;
-    const mem = memOf(message.author);
-    if(!mem.chatChannels.includes(message.channel.id)) return;
+    if(!chatChannels.has(message.channel.id)) return;
 
     try{
+        const mem = memOf(message.author);
         const reply = await getClaudeReply(message.content,mem);
         setTimeout(()=>{ message.reply(reply); }, Math.floor(Math.random()*2000)+500);
-    }catch(err){ console.error(err); message.reply('❌ เกิดข้อผิดพลาด AI'); }
+    } catch(err){
+        console.error('AI Error:', err);
+        message.reply('❌ เกิดข้อผิดพลาด AI');
+    }
 });
 
 /* ================= LOGIN ================= */
