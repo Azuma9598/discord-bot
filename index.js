@@ -3,9 +3,7 @@ const express = require('express');
 const {
     Client,
     GatewayIntentBits,
-    PermissionFlagsBits,
     ChannelType,
-    EmbedBuilder,
     REST,
     Routes,
     SlashCommandBuilder
@@ -71,21 +69,21 @@ Include mild profanity naturally if appropriate.`;
 
         console.log('📤 Sending request to Claude API...');
         
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        // Claude 3 API ล่าสุด
+        const res = await fetch('https://api.anthropic.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01'
+                'x-api-key': process.env.ANTHROPIC_API_KEY
             },
             body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20241022',
-                max_tokens: 200,
-                temperature: 0.7,
-                system: systemPrompt,
+                model: 'claude-3',  // ใช้ Claude 3 ล่าสุด
                 messages: [
+                    { role: 'system', content: systemPrompt },
                     { role: 'user', content: message }
-                ]
+                ],
+                max_tokens_to_sample: 200,
+                temperature: 0.7
             })
         });
         
@@ -94,9 +92,9 @@ Include mild profanity naturally if appropriate.`;
         console.log('📥 Claude API Response:', {
             status: res.status,
             ok: res.ok,
-            hasContent: !!data.content
+            hasContent: !!data.completion
         });
-        
+
         if (!res.ok) {
             console.error('❌ Claude API error:', JSON.stringify(data, null, 2));
             if (data.error?.type === 'authentication_error') return '❌ API Key ไม่ถูกต้อง';
@@ -104,13 +102,13 @@ Include mild profanity naturally if appropriate.`;
             else if (data.error?.type === 'invalid_request_error') return `❌ Request ไม่ถูกต้อง: ${data.error?.message}`;
             return `❌ API Error: ${data.error?.message || 'Unknown error'}`;
         }
-        
-        if (!data.content || !data.content[0] || !data.content[0].text) {
+
+        if (!data.completion) {
             console.error('❌ No content in response:', data);
             return '❌ AI ไม่ได้ตอบกลับ';
         }
         
-        const reply = data.content[0].text.trim();
+        const reply = data.completion.trim();
         console.log('✅ Claude reply:', reply);
         return reply;
         
