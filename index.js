@@ -57,33 +57,40 @@ async function getClaudeReply(message, mem) {
     else if(mem.mood==='goon') style = 'You are seductive, naughty, flirty.';
     else style = 'You are calm, neutral, Ken Kaneki style.';
 
-    const prompt = `
-You are Ken Kaneki from Tokyo Ghoul. ${style}
-Respond to the human message below in his style.
+    const systemPrompt = `You are Ken Kaneki from Tokyo Ghoul. ${style}
+Respond in his style.
 Use:
 .(ข้อความ) for actions
 -# ข้อความ for inner thoughts
-Include mild profanity naturally if appropriate.
-Human: ${message}
-Assistant:`;
+Include mild profanity naturally if appropriate.`;
 
     try {
-        const res = await fetch('https://api.anthropic.com/v1/complete', {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-Key': process.env.ANTHROPIC_API_KEY
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-v1',
-                prompt,
-                max_tokens_to_sample: 200,
+                model: 'claude-3-5-sonnet-20241022',
+                max_tokens: 200,
                 temperature: 0.7,
-                stop_sequences: ["Human:"]
+                system: systemPrompt,
+                messages: [
+                    { role: 'user', content: message }
+                ]
             })
         });
+        
         const data = await res.json();
-        return data.completion ? data.completion.trim() : '❌ ไม่มีการตอบกลับจาก AI';
+        
+        if (!res.ok) {
+            console.error('Claude API error:', data);
+            return `❌ API Error: ${data.error?.message || 'Unknown error'}`;
+        }
+        
+        return data.content?.[0]?.text?.trim() || '❌ ไม่มีการตอบกลับจาก AI';
     } catch(err){
         console.error('Claude API error:', err);
         return '❌ เกิดข้อผิดพลาด AI';
