@@ -1,20 +1,23 @@
 {
-  "name": "discord-bot",
+  "name": "discord-kaneki-bot",
   "version": "1.0.0",
-  "description": "Discord bot (discord.js v14, Node 20, Claude 3.5)",
+  "description": "Ken Kaneki Discord bot powered by Claude 3.5 Sonnet",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "@discordjs/voice": "^0.16.0",
-    "ytdl-core": "^4.11.5"
-  }
+    "express": "^4.19.2"
+  },
+  "keywords": ["discord", "bot", "claude", "ai", "kaneki"],
+  "author": "NN",
+  "license": "MIT"
 }
