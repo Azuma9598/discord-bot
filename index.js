@@ -69,17 +69,24 @@ Include mild profanity naturally if appropriate.`;
 
         console.log('📤 Sending request to Claude API...');
 
-        // ใช้ Claude 3.5 ล่าสุด
-        const res = await fetch('https://api.anthropic.com/v1/complete', {
+        // ใช้ Messages API ที่ถูกต้อง
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-3.5',  // ใช้ model ล่าสุด
-                prompt: `${systemPrompt}\n\nHuman: ${message}\n\nAssistant:`,
-                max_tokens_to_sample: 200,
+                model: 'claude-3-5-sonnet-20241022',  // ใช้ model ที่ถูกต้อง
+                max_tokens: 200,
+                system: systemPrompt,
+                messages: [
+                    {
+                        role: 'user',
+                        content: message
+                    }
+                ],
                 temperature: 0.7
             })
         });
@@ -94,12 +101,12 @@ Include mild profanity naturally if appropriate.`;
             return `❌ API Error: ${data.error?.message || 'Unknown error'}`;
         }
 
-        if (!data.completion) {
+        if (!data.content || !data.content[0]?.text) {
             console.error('❌ No content in response:', data);
             return '❌ AI ไม่ได้ตอบกลับ';
         }
 
-        const reply = data.completion.trim();
+        const reply = data.content[0].text.trim();
         console.log('✅ Claude reply:', reply);
         return reply;
 
@@ -125,7 +132,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('add_personal').setDescription('เพิ่มค่า affinity')
             .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวน').setRequired(true)),
         new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ')
-            .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวนข้อความที่จะลบ')),
+            .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวนข้อความที่จะลบ').setRequired(true)),
         new SlashCommandBuilder().setName('send').setDescription('ส่งข้อความ')
             .addStringOption(opt => opt.setName('message').setDescription('ข้อความ').setRequired(true))
             .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel'))
@@ -164,6 +171,33 @@ client.on('interactionCreate', async interaction => {
 
     try {
         switch(interaction.commandName){
+            case 'add_personal': {
+                const amount = interaction.options.getInteger('amount');
+                mem.affinity += amount;
+                saveDB();
+                return interaction.reply(`✅ เพิ่ม affinity ${amount} คะแนน (รวม: ${mem.affinity})`);
+            }
+            case 'clear': {
+                const amount = interaction.options.getInteger('amount');
+                if(amount < 1 || amount > 100) return interaction.reply('❌ ระบุจำนวน 1-100');
+                await interaction.deferReply({ ephemeral: true });
+                const messages = await interaction.channel.messages.fetch({ limit: amount });
+                await interaction.channel.bulkDelete(messages, true);
+                return interaction.editReply(`✅ ลบข้อความ ${messages.size} ข้อความแล้ว`);
+            }
+            case 'send': {
+                const msg = interaction.options.getString('message');
+                const channel = interaction.options.getChannel('channel') || interaction.channel;
+                const count = interaction.options.getInteger('count') || 1;
+                
+                if(count < 1 || count > 10) return interaction.reply('❌ ส่งได้ 1-10 ครั้ง');
+                
+                for(let i=0; i<count; i++) {
+                    await channel.send(msg);
+                    if(i < count-1) await new Promise(r => setTimeout(r, 500));
+                }
+                return interaction.reply({ content: `✅ ส่งข้อความแล้ว ${count} ครั้ง`, ephemeral: true });
+            }
             case 'goonmode': {
                 mem.mood = (mem.mood==='goon')?'neutral':'goon';
                 saveDB();
@@ -173,6 +207,15 @@ client.on('interactionCreate', async interaction => {
                 mem.mood = (mem.mood==='ghoul')?'neutral':'ghoul';
                 saveDB();
                 return interaction.reply(`🩸 Ghoul mode ${mem.mood==='ghoul'?'เปิด':'ปิด'} แล้ว`);
+            }
+            case 'coffee': {
+                const coffeeMsg = [
+                    '☕ * popopopopopopopopopoกาแฟ*',
+                    '☕ ดื่มกาแฟให้หายเครียด...',
+                    '☕ *จิบกาแฟเงียบๆ*',
+                    '☕ กาแฟ... ช่วยให้ข้ามีสติอยู่กับโลกนี้'
+                ];
+                return interaction.reply(coffeeMsg[Math.floor(Math.random()*coffeeMsg.length)]);
             }
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
@@ -184,6 +227,12 @@ client.on('interactionCreate', async interaction => {
                 chatChannels.clear();
                 return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว');
             }
+            case 'autochat': {
+                const toggle = interaction.options.getString('toggle');
+                mem.autochat = (toggle === 'on');
+                saveDB();
+                return interaction.reply(`🤖 Autochat ${mem.autochat?'เปิด':'ปิด'} แล้ว`);
+            }
             case 'token': {
                 const quotes = [
                     "ข้าคือเงาที่โลกนี้ไม่ต้องการ",
@@ -193,6 +242,13 @@ client.on('interactionCreate', async interaction => {
                     "ความอ่อนแอคือบาป"
                 ];
                 return interaction.reply(`🗡️ "${quotes[Math.floor(Math.random()*quotes.length)]}"`);
+            }
+            case 'ประกาศ': {
+                const msg = interaction.options.getString('message');
+                const announceChannel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
+                if(!announceChannel) return interaction.reply('❌ ไม่พบห้องประกาศ');
+                await announceChannel.send(`📢 **ประกาศ**\n${msg}`);
+                return interaction.reply({ content: '✅ ประกาศแล้ว', ephemeral: true });
             }
         }
     } catch(err){
