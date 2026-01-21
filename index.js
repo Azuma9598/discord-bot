@@ -46,7 +46,7 @@ function isOwner(userId) {
     return userId === OWNER_ID;
 }
 function isAdmin(member) {
-    return member.roles.cache.some(r => ADMIN_ROLES.has(r.id));
+    return member.roles.cache.some(role => ADMIN_ROLES.has(role.id));
 }
 
 /* ================= READY ================= */
@@ -57,17 +57,30 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('set-admin')
             .setDescription('ตั้ง Admin (Owner เท่านั้น)')
-            .addRoleOption(o => o.setName('role').setDescription('เลือกยศ').setRequired(true)),
+            .addRoleOption(o =>
+                o.setName('role')
+                 .setDescription('เลือกยศ')
+                 .setRequired(true)
+            ),
 
         new SlashCommandBuilder()
             .setName('remove-admin')
             .setDescription('ลบ Admin (Owner เท่านั้น)')
-            .addRoleOption(o => o.setName('role').setDescription('เลือกยศ').setRequired(true)),
+            .addRoleOption(o =>
+                o.setName('role')
+                 .setDescription('เลือกยศ')
+                 .setRequired(true)
+            ),
 
         new SlashCommandBuilder()
             .setName('setchat')
-            .setDescription('ตั้งห้อง chat')
-            .addChannelOption(o => o.setName('channel').setDescription('เลือกห้อง').setRequired(true)),
+            .setDescription('ตั้งห้อง chat (Text Channel เท่านั้น)')
+            .addChannelOption(o =>
+                o.setName('channel')
+                 .setDescription('เลือก Text Channel')
+                 .setRequired(true)
+                 .addChannelTypes(ChannelType.GuildText) // ✅ แก้ตรงนี้
+            ),
 
         new SlashCommandBuilder()
             .setName('stopchat')
@@ -84,7 +97,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder()
             .setName('coffee')
             .setDescription('ดื่มกาแฟ')
-    ].map(c => c.toJSON());
+    ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(
@@ -102,7 +115,7 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
     }
 
-    /* ===== OWNER ONLY COMMANDS ===== */
+    /* ===== OWNER ONLY ===== */
     if (['set-admin', 'remove-admin'].includes(interaction.commandName)) {
         if (!isOwner(interaction.user.id)) {
             return interaction.reply({
@@ -137,17 +150,14 @@ client.on('interactionCreate', async interaction => {
         }
 
         case 'setchat': {
-            const ch = interaction.options.getChannel('channel');
-            if (ch.type !== ChannelType.GuildText) {
-                return interaction.reply('❌ ต้องเป็น Text Channel');
-            }
-            chatChannels.add(ch.id);
-            return interaction.reply(`✅ ตั้งห้อง ${ch.name}`);
+            const channel = interaction.options.getChannel('channel');
+            chatChannels.add(channel.id);
+            return interaction.reply(`✅ ตั้งห้อง chat เป็น **${channel.name}**`);
         }
 
         case 'stopchat':
             chatChannels.clear();
-            return interaction.reply('🛑 หยุด chat แล้ว');
+            return interaction.reply('🛑 หยุด chat ทั้งหมดแล้ว');
 
         case 'ghoulmode': {
             const mem = memOf(interaction.user);
@@ -177,18 +187,10 @@ client.on('messageCreate', async message => {
 });
 
 /* ================= ERROR HANDLING ================= */
-client.on('error', err => {
-    console.error('❌ Discord Client Error:', err);
-});
-client.on('shardError', err => {
-    console.error('❌ Shard Error:', err);
-});
-process.on('unhandledRejection', err => {
-    console.error('❌ Unhandled Rejection:', err);
-});
-process.on('uncaughtException', err => {
-    console.error('❌ Uncaught Exception:', err);
-});
+client.on('error', err => console.error('❌ Discord Client Error:', err));
+client.on('shardError', err => console.error('❌ Shard Error:', err));
+process.on('unhandledRejection', err => console.error('❌ Unhandled Rejection:', err));
+process.on('uncaughtException', err => console.error('❌ Uncaught Exception:', err));
 
 /* ================= LOGIN ================= */
 client.login(process.env.DISCORD_TOKEN);
