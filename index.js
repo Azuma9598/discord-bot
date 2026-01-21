@@ -25,8 +25,8 @@ const client = new Client({
 });
 
 /* ================= CONFIG ================= */
-const ALLOWED_ROLE_ID = '1432773041640706149';
 const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
+const ADMIN_ROLES = new Set(); // เก็บ role IDs ที่เป็น admin
 
 /* ================= CHAT CHANNELS GLOBAL ================= */
 const chatChannels = new Set();
@@ -46,6 +46,12 @@ function memOf(user) {
     return db[user.id];
 }
 function saveDB() {}
+
+/* ================= CHECK ADMIN ================= */
+function isAdmin(member) {
+    if (ADMIN_ROLES.size === 0) return true; // ถ้ายังไม่ได้ตั้ง admin ให้ทุกคนใช้ได้
+    return member.roles.cache.some(role => ADMIN_ROLES.has(role.id));
+}
 
 /* ================= ANTHROPIC CLAUDE API ================= */
 async function getClaudeReply(message, mem) {
@@ -69,7 +75,6 @@ Include mild profanity naturally if appropriate.`;
 
         console.log('📤 Sending request to Claude API...');
 
-        // ใช้ Messages API ที่ถูกต้อง
         const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -78,7 +83,7 @@ Include mild profanity naturally if appropriate.`;
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20241022',  // ใช้ model ที่ถูกต้อง
+                model: 'claude-sonnet-4-20250514', // แก้ไขเป็น model ล่าสุด
                 max_tokens: 200,
                 system: systemPrompt,
                 messages: [
@@ -129,6 +134,10 @@ client.once('ready', async () => {
     }
 
     const commands = [
+        new SlashCommandBuilder().setName('set-admin').setDescription('ตั้งยศ Admin')
+            .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่จะเป็น Admin').setRequired(true)),
+        new SlashCommandBuilder().setName('remove-admin').setDescription('ลบยศ Admin')
+            .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่จะลบออก').setRequired(true)),
         new SlashCommandBuilder().setName('add_personal').setDescription('เพิ่มค่า affinity')
             .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวน').setRequired(true)),
         new SlashCommandBuilder().setName('clear').setDescription('ลบข้อความ')
@@ -164,12 +173,41 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
     if (!interaction.inGuild()) return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
-    if (!interaction.member.roles.cache.has(ALLOWED_ROLE_ID)) return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
 
     const mem = memOf(interaction.user);
     mem.lastSeen = Date.now();
 
     try {
+        switch(interaction.commandName){
+            case 'set-admin': {
+                // เฉพาะ Server Owner หรือ Admin เดิมเท่านั้นที่ตั้ง admin ได้
+                if (!interaction.member.permissions.has('Administrator') && !isAdmin(interaction.member)) {
+                    return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้', ephemeral: true });
+                }
+                const role = interaction.options.getRole('role');
+                ADMIN_ROLES.add(role.id);
+                return interaction.reply(`✅ ตั้งยศ ${role.name} เป็น Admin แล้ว`);
+            }
+            case 'remove-admin': {
+                if (!interaction.member.permissions.has('Administrator') && !isAdmin(interaction.member)) {
+                    return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้', ephemeral: true });
+                }
+                const role = interaction.options.getRole('role');
+                if (ADMIN_ROLES.delete(role.id)) {
+                    return interaction.reply(`✅ ลบยศ ${role.name} ออกจาก Admin แล้ว`);
+                } else {
+                    return interaction.reply(`❌ ยศ ${role.name} ไม่ได้อยู่ใน Admin`);
+                }
+            }
+            default: {
+                // เช็คว่าเป็น Admin หรือไม่สำหรับคำสั่งอื่นๆ
+                if (!isAdmin(interaction.member)) {
+                    return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
+                }
+                break;
+            }
+        }
+
         switch(interaction.commandName){
             case 'add_personal': {
                 const amount = interaction.options.getInteger('amount');
