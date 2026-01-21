@@ -25,6 +25,7 @@ const client = new Client({
 });
 
 /* ================= CONFIG ================= */
+const OWNER_ID = '1444554473916862564'; // Owner ที่ใช้คำสั่งได้ทั้งหมด
 const ADMIN_ROLES = new Set(); // เก็บ role IDs ที่เป็น admin
 
 /* ================= CHAT CHANNELS GLOBAL ================= */
@@ -47,8 +48,11 @@ function memOf(user) {
 function saveDB() {}
 
 /* ================= CHECK ADMIN ================= */
+function isOwner(userId) {
+    return userId === OWNER_ID;
+}
+
 function isAdmin(member) {
-    if (ADMIN_ROLES.size === 0) return true; // ถ้ายังไม่ได้ตั้ง admin ให้ทุกคนใช้ได้
     return member.roles.cache.some(role => ADMIN_ROLES.has(role.id));
 }
 
@@ -177,17 +181,18 @@ client.on('interactionCreate', async interaction => {
     try {
         switch(interaction.commandName){
             case 'set-admin': {
-                // เฉพาะ Server Owner หรือ Admin เดิมเท่านั้นที่ตั้ง admin ได้
-                if (!interaction.member.permissions.has('Administrator') && !isAdmin(interaction.member)) {
-                    return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้', ephemeral: true });
+                // เฉพาะ Owner เท่านั้นที่ตั้ง admin ได้
+                if (!isOwner(interaction.user.id)) {
+                    return interaction.reply({ content: '❌ เฉพาะ Owner เท่านั้นที่ใช้คำสั่งนี้ได้', ephemeral: true });
                 }
                 const role = interaction.options.getRole('role');
                 ADMIN_ROLES.add(role.id);
                 return interaction.reply(`✅ ตั้งยศ ${role.name} เป็น Admin แล้ว`);
             }
             case 'remove-admin': {
-                if (!interaction.member.permissions.has('Administrator') && !isAdmin(interaction.member)) {
-                    return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้', ephemeral: true });
+                // เฉพาะ Owner เท่านั้นที่ลบ admin ได้
+                if (!isOwner(interaction.user.id)) {
+                    return interaction.reply({ content: '❌ เฉพาะ Owner เท่านั้นที่ใช้คำสั่งนี้ได้', ephemeral: true });
                 }
                 const role = interaction.options.getRole('role');
                 if (ADMIN_ROLES.delete(role.id)) {
@@ -197,8 +202,8 @@ client.on('interactionCreate', async interaction => {
                 }
             }
             default: {
-                // เช็คว่าเป็น Admin หรือไม่สำหรับคำสั่งอื่นๆ
-                if (!isAdmin(interaction.member)) {
+                // เช็คว่าเป็น Owner หรือ Admin หรือไม่สำหรับคำสั่งอื่นๆ
+                if (!isOwner(interaction.user.id) && !isAdmin(interaction.member)) {
                     return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
                 }
                 break;
