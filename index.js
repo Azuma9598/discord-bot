@@ -13,7 +13,7 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('🤖 Discord bot is running!'));
-app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🌐 Web server running on ${PORT}`));
 
 /* ================= DISCORD CLIENT ================= */
 const client = new Client({
@@ -27,6 +27,7 @@ const client = new Client({
 /* ================= PERMISSION ================= */
 const OWNER_ID = '1444554473916862564';
 const ADMIN_ROLES = new Set();
+const chatChannels = new Set();
 
 /* ================= MEMORY ================= */
 const db = {};
@@ -53,33 +54,59 @@ client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
 
     const commands = [
-        new SlashCommandBuilder().setName('set-admin').setDescription('ตั้ง Admin (Owner เท่านั้น)')
-            .addRoleOption(o => o.setName('role').setRequired(true)),
-        new SlashCommandBuilder().setName('remove-admin').setDescription('ลบ Admin (Owner เท่านั้น)')
-            .addRoleOption(o => o.setName('role').setRequired(true)),
-        new SlashCommandBuilder().setName('setchat').setDescription('ตั้งห้อง chat')
-            .addChannelOption(o => o.setName('channel').setRequired(true)),
-        new SlashCommandBuilder().setName('stopchat').setDescription('หยุด chat'),
-        new SlashCommandBuilder().setName('ghoulmode').setDescription('เปิด/ปิด ghoul'),
-        new SlashCommandBuilder().setName('goonmode').setDescription('เปิด/ปิด goon'),
-        new SlashCommandBuilder().setName('coffee').setDescription('ดื่มกาแฟ')
+        new SlashCommandBuilder()
+            .setName('set-admin')
+            .setDescription('ตั้ง Admin (Owner เท่านั้น)')
+            .addRoleOption(o => o.setName('role').setDescription('เลือกยศ').setRequired(true)),
+
+        new SlashCommandBuilder()
+            .setName('remove-admin')
+            .setDescription('ลบ Admin (Owner เท่านั้น)')
+            .addRoleOption(o => o.setName('role').setDescription('เลือกยศ').setRequired(true)),
+
+        new SlashCommandBuilder()
+            .setName('setchat')
+            .setDescription('ตั้งห้อง chat')
+            .addChannelOption(o => o.setName('channel').setDescription('เลือกห้อง').setRequired(true)),
+
+        new SlashCommandBuilder()
+            .setName('stopchat')
+            .setDescription('หยุด chat'),
+
+        new SlashCommandBuilder()
+            .setName('ghoulmode')
+            .setDescription('เปิด/ปิด Ghoul mode'),
+
+        new SlashCommandBuilder()
+            .setName('goonmode')
+            .setDescription('เปิด/ปิด Goon mode'),
+
+        new SlashCommandBuilder()
+            .setName('coffee')
+            .setDescription('ดื่มกาแฟ')
     ].map(c => c.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID),
+        { body: commands }
+    );
+
+    console.log('✅ Slash commands registered');
 });
 
 /* ================= INTERACTION ================= */
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    if (!interaction.inGuild())
+    if (!interaction.inGuild()) {
         return interaction.reply({ content: '❌ ใช้ได้เฉพาะในเซิร์ฟเวอร์', ephemeral: true });
+    }
 
-    /* ===== OWNER ONLY ===== */
+    /* ===== OWNER ONLY COMMANDS ===== */
     if (['set-admin', 'remove-admin'].includes(interaction.commandName)) {
         if (!isOwner(interaction.user.id)) {
             return interaction.reply({
-                content: '❌ คำสั่งนี้ใช้ได้เฉพาะ Owner',
+                content: '❌ คำสั่งนี้ใช้ได้เฉพาะ Owner เท่านั้น',
                 ephemeral: true
             });
         }
@@ -94,29 +121,32 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    /* ===== COMMANDS ===== */
+    /* ===== COMMAND HANDLER ===== */
     switch (interaction.commandName) {
 
         case 'set-admin': {
             const role = interaction.options.getRole('role');
             ADMIN_ROLES.add(role.id);
-            return interaction.reply(`✅ ตั้ง **${role.name}** เป็น Admin แล้ว`);
+            return interaction.reply(`✅ ตั้งยศ **${role.name}** เป็น Admin แล้ว`);
         }
 
         case 'remove-admin': {
             const role = interaction.options.getRole('role');
             ADMIN_ROLES.delete(role.id);
-            return interaction.reply(`🛑 ลบ **${role.name}** ออกจาก Admin แล้ว`);
+            return interaction.reply(`🛑 ลบยศ **${role.name}** ออกจาก Admin แล้ว`);
         }
 
         case 'setchat': {
             const ch = interaction.options.getChannel('channel');
-            if (ch.type !== ChannelType.GuildText)
+            if (ch.type !== ChannelType.GuildText) {
                 return interaction.reply('❌ ต้องเป็น Text Channel');
+            }
+            chatChannels.add(ch.id);
             return interaction.reply(`✅ ตั้งห้อง ${ch.name}`);
         }
 
         case 'stopchat':
+            chatChannels.clear();
             return interaction.reply('🛑 หยุด chat แล้ว');
 
         case 'ghoulmode': {
@@ -134,6 +164,30 @@ client.on('interactionCreate', async interaction => {
         case 'coffee':
             return interaction.reply('☕ *จิบกาแฟเงียบๆ*');
     }
+});
+
+/* ================= MESSAGE CHAT ================= */
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+    if (!chatChannels.has(message.channel.id)) return;
+    if (!isOwner(message.author.id) && !isAdmin(message.member)) return;
+
+    await message.channel.sendTyping();
+    message.reply('...').catch(console.error);
+});
+
+/* ================= ERROR HANDLING ================= */
+client.on('error', err => {
+    console.error('❌ Discord Client Error:', err);
+});
+client.on('shardError', err => {
+    console.error('❌ Shard Error:', err);
+});
+process.on('unhandledRejection', err => {
+    console.error('❌ Unhandled Rejection:', err);
+});
+process.on('uncaughtException', err => {
+    console.error('❌ Uncaught Exception:', err);
 });
 
 /* ================= LOGIN ================= */
