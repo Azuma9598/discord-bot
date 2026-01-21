@@ -27,9 +27,7 @@ const client = new Client({
 /* ================= CONFIG ================= */
 const OWNER_ID = '1444554473916862564'; // Owner ที่ใช้คำสั่งได้ทั้งหมด
 const ADMIN_ROLES = new Set(); // เก็บ role IDs ที่เป็น admin
-
-/* ================= CHAT CHANNELS GLOBAL ================= */
-const chatChannels = new Set();
+const chatChannels = new Set(); // เก็บ channel IDs ที่อนุญาตให้ bot ตอบกลับ (ว่างเปล่า = ไม่ตอบเลย)
 
 /* ================= DATABASE MOCK ================= */
 const db = {};
@@ -47,7 +45,7 @@ function memOf(user) {
 }
 function saveDB() {}
 
-/* ================= CHECK ADMIN ================= */
+/* ================= CHECK PERMISSIONS ================= */
 function isOwner(userId) {
     return userId === OWNER_ID;
 }
@@ -86,7 +84,7 @@ Include mild profanity naturally if appropriate.`;
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514', // แก้ไขเป็น model ล่าสุด
+                model: 'claude-sonnet-4-20250514',
                 max_tokens: 200,
                 system: systemPrompt,
                 messages: [
@@ -129,6 +127,8 @@ Include mild profanity naturally if appropriate.`;
 /* ================= REGISTER GLOBAL SLASH COMMANDS ================= */
 client.once('ready', async () => {
     console.log(`🤖 Logged in as ${client.user.tag}`);
+    console.log(`📋 Owner ID: ${OWNER_ID}`);
+    console.log(`🔒 Bot จะตอบกลับเฉพาะช่องที่ใช้ /setchat ตั้งไว้เท่านั้น`);
 
     if (!process.env.ANTHROPIC_API_KEY) {
         console.error('⚠️ WARNING: ANTHROPIC_API_KEY not found in .env file!');
@@ -137,9 +137,9 @@ client.once('ready', async () => {
     }
 
     const commands = [
-        new SlashCommandBuilder().setName('set-admin').setDescription('ตั้งยศ Admin')
+        new SlashCommandBuilder().setName('set-admin').setDescription('ตั้งยศ Admin (เฉพาะ Owner)')
             .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่จะเป็น Admin').setRequired(true)),
-        new SlashCommandBuilder().setName('remove-admin').setDescription('ลบยศ Admin')
+        new SlashCommandBuilder().setName('remove-admin').setDescription('ลบยศ Admin (เฉพาะ Owner)')
             .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่จะลบออก').setRequired(true)),
         new SlashCommandBuilder().setName('add_personal').setDescription('เพิ่มค่า affinity')
             .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวน').setRequired(true)),
@@ -152,7 +152,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('ghoulmode').setDescription('เปิด/ปิด Ghoul mode'),
         new SlashCommandBuilder().setName('goonmode').setDescription('เปิด/ปิด Goon mode'),
         new SlashCommandBuilder().setName('coffee').setDescription('ดื่มกาแฟ'),
-        new SlashCommandBuilder().setName('setchat').setDescription('ตั้งห้อง chat')
+        new SlashCommandBuilder().setName('setchat').setDescription('ตั้งห้อง chat (bot จะตอบเฉพาะห้องนี้)')
             .addChannelOption(opt => opt.setName('channel').setDescription('เลือก channel').setRequired(true)),
         new SlashCommandBuilder().setName('stopchat').setDescription('หยุด chat ทุกห้อง'),
         new SlashCommandBuilder().setName('autochat').setDescription('เปิด/ปิด autochat')
@@ -187,6 +187,7 @@ client.on('interactionCreate', async interaction => {
                 }
                 const role = interaction.options.getRole('role');
                 ADMIN_ROLES.add(role.id);
+                console.log(`✅ Added admin role: ${role.name} (${role.id})`);
                 return interaction.reply(`✅ ตั้งยศ ${role.name} เป็น Admin แล้ว`);
             }
             case 'remove-admin': {
@@ -196,6 +197,7 @@ client.on('interactionCreate', async interaction => {
                 }
                 const role = interaction.options.getRole('role');
                 if (ADMIN_ROLES.delete(role.id)) {
+                    console.log(`✅ Removed admin role: ${role.name} (${role.id})`);
                     return interaction.reply(`✅ ลบยศ ${role.name} ออกจาก Admin แล้ว`);
                 } else {
                     return interaction.reply(`❌ ยศ ${role.name} ไม่ได้อยู่ใน Admin`);
@@ -204,7 +206,7 @@ client.on('interactionCreate', async interaction => {
             default: {
                 // เช็คว่าเป็น Owner หรือ Admin หรือไม่สำหรับคำสั่งอื่นๆ
                 if (!isOwner(interaction.user.id) && !isAdmin(interaction.member)) {
-                    return interaction.reply({ content: '❌ คุณไม่มียศที่ใช้คำสั่งนี้ได้', ephemeral: true });
+                    return interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้', ephemeral: true });
                 }
                 break;
             }
@@ -259,13 +261,19 @@ client.on('interactionCreate', async interaction => {
             }
             case 'setchat': {
                 const channel = interaction.options.getChannel('channel');
-                if(!channel||channel.type!==ChannelType.GuildText) return interaction.reply('❌ ต้องเป็น Text Channel');
+                if(!channel || channel.type !== ChannelType.GuildText) {
+                    return interaction.reply('❌ ต้องเป็น Text Channel เท่านั้น');
+                }
                 chatChannels.add(channel.id);
+                console.log(`✅ Added chat channel: ${channel.name} (${channel.id})`);
+                console.log(`📋 Active chat channels: ${Array.from(chatChannels).join(', ')}`);
                 return interaction.reply(`✅ ตั้งห้อง ${channel.name} แล้ว (bot จะตอบกลับข้อความในห้องนี้)`);
             }
             case 'stopchat': {
+                const count = chatChannels.size;
                 chatChannels.clear();
-                return interaction.reply('🛑 หยุดพูดคุยทั้งหมดแล้ว');
+                console.log(`🛑 Cleared all chat channels (${count} channels removed)`);
+                return interaction.reply(`🛑 หยุดพูดคุยทั้งหมดแล้ว (ลบ ${count} ห้อง)`);
             }
             case 'autochat': {
                 const toggle = interaction.options.getString('toggle');
@@ -292,17 +300,24 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-/* ================= MESSAGE RESPONSE ================= */
+/* ================= MESSAGE RESPONSE (เข้มงวด - ต้อง /setchat ก่อน) ================= */
 client.on('messageCreate', async message => {
+    // ข้าม bot
     if(message.author.bot) return;
-    if(!chatChannels.has(message.channel.id)) return;
+    
+    // เช็คว่าห้องนี้ถูกเพิ่มใน chatChannels หรือยัง
+    if(!chatChannels.has(message.channel.id)) {
+        console.log(`⏭️ Skipped message in ${message.channel.name} - channel not in chatChannels set`);
+        return;
+    }
 
-    console.log(`💬 Received message from ${message.author.tag}: ${message.content}`);
+    console.log(`💬 Processing message in ${message.channel.name} from ${message.author.tag}: ${message.content}`);
 
     try {
         const mem = memOf(message.author);
         await message.channel.sendTyping();
         const reply = await getClaudeReply(message.content, mem);
+        
         setTimeout(() => {
             message.reply(reply).catch(err => console.error('❌ Failed to send reply:', err));
         }, Math.floor(Math.random() * 2000) + 500);
