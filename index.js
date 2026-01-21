@@ -25,7 +25,6 @@ const client = new Client({
 });
 
 /* ================= CONFIG ================= */
-const ANNOUNCE_CHANNEL_ID = '1432780520571539558';
 const ADMIN_ROLES = new Set(); // เก็บ role IDs ที่เป็น admin
 
 /* ================= CHAT CHANNELS GLOBAL ================= */
@@ -155,9 +154,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('autochat').setDescription('เปิด/ปิด autochat')
             .addStringOption(opt => opt.setName('toggle').setDescription('on หรือ off').setRequired(true)
             .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })),
-        new SlashCommandBuilder().setName('token').setDescription('สุ่มคำเบียวๆ'),
-        new SlashCommandBuilder().setName('ประกาศ').setDescription('ประกาศข้อความ')
-            .addStringOption(opt => opt.setName('message').setDescription('ข้อความที่จะประกาศ').setRequired(true))
+        new SlashCommandBuilder().setName('token').setDescription('สุ่มคำเบียวๆ')
     ].map(cmd => cmd.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -280,13 +277,6 @@ client.on('interactionCreate', async interaction => {
                     "ความอ่อนแอคือบาป"
                 ];
                 return interaction.reply(`🗡️ "${quotes[Math.floor(Math.random()*quotes.length)]}"`);
-            }
-            case 'ประกาศ': {
-                const msg = interaction.options.getString('message');
-                const announceChannel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
-                if(!announceChannel) return interaction.reply('❌ ไม่พบห้องประกาศ');
-                await announceChannel.send(`📢 **ประกาศ**\n${msg}`);
-                return interaction.reply({ content: '✅ ประกาศแล้ว', ephemeral: true });
             }
         }
     } catch(err){
