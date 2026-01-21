@@ -1,23 +1,46 @@
 {
   "name": "discord-kaneki-bot",
-  "version": "1.0.0",
-  "description": "Ken Kaneki Discord bot powered by Claude 3.5 Sonnet",
+  "version": "2.0.0",
+  "description": "Ken Kaneki Discord bot with Claude AI integration",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "setup": "npm install",
+    "update": "npm update",
+    "clean": "rm -rf node_modules package-lock.json && npm install"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "@anthropic-ai/sdk": "^0.24.0",
+    "discord.js": "^14.15.3",
     "dotenv": "^16.4.5",
     "express": "^4.19.2"
   },
-  "keywords": ["discord", "bot", "claude", "ai", "kaneki"],
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "kaneki",
+    "ghoul",
+    "claude",
+    "ai",
+    "chatbot"
+  ],
   "author": "NN",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/discord-kaneki-bot"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/discord-kaneki-bot/issues"
+  },
+  "homepage": "https://github.com/yourusername/discord-kaneki-bot#readme"
 }
